@@ -537,14 +537,14 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
 
 
 def render_metric_row(summary: dict[str, int | float]) -> None:
-    total_cost_eok = format_eok_from_kkrw(summary["awarded_total_project_cost_kkrw"])
-    total_cost_kkrw = format_count(summary["awarded_total_project_cost_kkrw"])
+    total_cost_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
+    total_cost_kkrw = format_count(summary["awarded_government_funding_kkrw"])
     cards = [
         ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "▣", *CARD_STYLES[0]),
         ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "➤", *CARD_STYLES[1]),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *CARD_STYLES[2]),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *CARD_STYLES[3]),
-        ("총사업비 합계", total_cost_eok, "억원", f"수주 건 총사업비 합계 · {total_cost_kkrw}천원", "₩", *CARD_STYLES[4]),
+        ("정부지원금 합계", total_cost_eok, "억원", f"수주 건 정부지원금 합계 · {total_cost_kkrw}천원", "₩", *CARD_STYLES[4]),
     ]
 
     columns = st.columns(5)
@@ -893,7 +893,7 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.caption("수주율은 제출 완료, 수주, 미수주 상태를 제출 건으로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 총사업비는 억원으로 환산해 표시합니다.")
+    st.caption("수주율은 제출 완료, 수주, 미수주 상태를 제출 건으로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=8, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
