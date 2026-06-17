@@ -713,7 +713,7 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "➤", *CARD_STYLES[1]),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *CARD_STYLES[2]),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *CARD_STYLES[3]),
-        ("정부지원금 합계", total_cost_eok, "억원", f"수주 건 정부지원금 합계 · {total_cost_kkrw}천원", "₩", *CARD_STYLES[4]),
+        ("정부지원금 합계", total_cost_eok, "억원", "정부지원금 합계", "₩", *CARD_STYLES[4]),
     ]
 
     columns = st.columns(5)
