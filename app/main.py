@@ -32,7 +32,7 @@ from integrations.google_sheets import (
 DISPLAY_LABELS = {
     **PROPOSAL_MASTER_COLUMN_LABELS,
     "days_to_deadline": "D-Day",
-    "deadline_bucket": "留덇컧 援ш컙",
+    "deadline_bucket": "마감 구간",
 }
 
 CARD_STYLES = [
@@ -748,14 +748,14 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             f"""
         <div class="hero-card">
             <div class="hero-title-wrap">
-                <div class="hero-icon">??/div>
+                <div class="hero-icon">▣</div>
                 <div>
-                    <h1 class="hero-title">?ъ뾽 ?쒖븞 ?꾪솴 ??쒕낫??/h1>
-                    <p class="hero-subtitle">Google Sheet ?낅젰 ?곗씠?곕? 湲곗??쇰줈 ?쒖븞 ?꾪솴, ?섏＜?? 留덇컧 由ъ뒪?щ? ?쒕늿???뺤씤?⑸땲??</p>
+                    <h1 class="hero-title">사업 제안 현황 대시보드</h1>
+                    <p class="hero-subtitle">Google Sheet 입력 데이터를 기준으로 제안 현황, 수주율, 마감 리스크를 한눈에 확인합니다.</p>
                 </div>
             </div>
             <div class="hero-meta">
-                <div><strong>理쒖쥌 ?낅뜲?댄듃:</strong> {html.escape(format_timestamp(latest_sync))}</div>
+                <div><strong>최종 업데이트:</strong> {html.escape(format_timestamp(latest_sync))}</div>
                 <div>{source_badge(data_source)}</div>
             </div>
         </div>
