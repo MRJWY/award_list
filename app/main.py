@@ -362,6 +362,73 @@ def inject_styles() -> None:
             line-height: 1.35;
         }
 
+        .split-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .split-panel-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .split-divider {
+            height: 1px;
+            background: linear-gradient(90deg, rgba(148, 163, 184, 0), rgba(148, 163, 184, 0.35), rgba(148, 163, 184, 0));
+        }
+
+        .compact-owner-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            margin-top: 0.15rem;
+        }
+
+        .compact-owner-row {
+            background: rgba(247, 249, 253, 0.9);
+            border: 1px solid rgba(226, 232, 240, 0.95);
+            border-radius: 18px;
+            padding: 0.85rem 0.9rem;
+        }
+
+        .compact-owner-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.6rem;
+        }
+
+        .compact-owner-name {
+            color: var(--text-main);
+            font-size: 0.92rem;
+            font-weight: 800;
+        }
+
+        .compact-owner-total {
+            color: var(--text-sub);
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .compact-owner-awarded {
+            color: #8E5CF6;
+            font-size: 0.86rem;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .compact-owner-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem 0.8rem;
+            margin-top: 0.6rem;
+            color: var(--text-sub);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
         .owner-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -893,6 +960,122 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
 
+def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
+    owner_summary = build_owner_summary(df).head(5)
+
+    panel_html = [
+        """
+        <div class="split-panel-section">
+            <h3 class="panel-title">책임자 현황</h3>
+        """
+    ]
+
+    if owner_summary.empty:
+        panel_html.append('<div class="empty-state">표시할 책임자 데이터가 없습니다.</div></div>')
+        return "".join(panel_html)
+
+    panel_html.append('<div class="compact-owner-list">')
+    for _, row in owner_summary.iterrows():
+        owner_name = str(row["owner"]).strip() or "미입력"
+        proposal_count = int(row["proposal_count"])
+        submitted_only_count = int(row["submitted_only_count"])
+        awarded_count = int(row["awarded_count"])
+        not_awarded_count = int(row["not_awarded_count"])
+
+        stack_total = max(submitted_only_count + awarded_count + not_awarded_count, 1)
+        submitted_width = submitted_only_count / stack_total * 100
+        awarded_width = awarded_count / stack_total * 100
+        not_awarded_width = not_awarded_count / stack_total * 100
+
+        panel_html.append(
+            dedent(
+                f"""
+                <div class="compact-owner-row">
+                    <div class="compact-owner-head">
+                        <div>
+                            <div class="compact-owner-name">{html.escape(owner_name)}</div>
+                            <div class="compact-owner-total">총 {proposal_count}건</div>
+                        </div>
+                        <div class="compact-owner-awarded">수주 {awarded_count}건</div>
+                    </div>
+                    <div class="owner-stack">
+                        <div class="owner-stack-segment owner-submitted" style="width:{submitted_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-awarded-segment" style="width:{awarded_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-not-awarded" style="width:{not_awarded_width:.1f}%"></div>
+                    </div>
+                    <div class="compact-owner-meta">
+                        <span>제출완료 {submitted_only_count}</span>
+                        <span>수주 {awarded_count}</span>
+                        <span>미수주 {not_awarded_count}</span>
+                    </div>
+                </div>
+                """
+            )
+        )
+    panel_html.append("</div></div>")
+    return "".join(panel_html)
+
+
+def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFrame) -> None:
+    counts = deadline_bucket_counts(deadline_df)
+    bucket_items = list(counts.items())
+    overdue_total = bucket_items[-1][1] if bucket_items else 0
+    upcoming_total = sum(value for _, value in bucket_items[:-1])
+    max_bucket = max(max(counts.values()), 1)
+
+    mini_html = [
+        dedent(
+            """
+        <div class="panel-card split-panel">
+            <div class="split-panel-section">
+                <h3 class="panel-title">마감 예정 / 지난 건</h3>
+        """
+        ),
+        dedent(
+            f"""
+        <div class="deadline-stat-grid">
+            <div class="deadline-stat-card" style="background:#edf4ff; color:#2f80ed;">
+                <p class="deadline-stat-title">마감 예정 (30일 기준)</p>
+                <p class="deadline-stat-value">{upcoming_total}</p>
+            </div>
+            <div class="deadline-stat-card" style="background:#ffecec; color:#f05a5a;">
+                <p class="deadline-stat-title">마감 지난 건</p>
+                <p class="deadline-stat-value">{overdue_total}</p>
+            </div>
+        </div>
+        <div class="mini-chart">
+        """
+        ),
+    ]
+    for index, (bucket, value) in enumerate(bucket_items):
+        height = max(18, value / max_bucket * 110) if value else 8
+        color = "#2F80ED" if index < len(bucket_items) - 1 else "#F05A5A"
+        mini_html.append(
+            dedent(
+                f"""
+            <div class="mini-group">
+                <div class="mini-bars">
+                    <div class="mini-bar" style="height:{height:.1f}px; background:{color};">
+                        <span>{value}</span>
+                    </div>
+                </div>
+                <div class="mini-label">{html.escape(bucket)}</div>
+            </div>
+            """
+            )
+        )
+
+    mini_html.extend(
+        [
+            "</div></div>",
+            '<div class="split-divider"></div>',
+            build_compact_owner_panel_html(owner_df),
+            "</div>",
+        ]
+    )
+    st.markdown("".join(mini_html), unsafe_allow_html=True)
+
+
 def status_pill_class(status_name: str) -> str:
     normalized = status_name.strip()
     if normalized == "기회 검토":
@@ -1113,9 +1296,8 @@ def main() -> None:
     with panel_columns[1]:
         render_rank_panel("제품코드별 건수", product_summary, "product_code")
     with panel_columns[2]:
-        render_deadline_panel(deadline_df)
+        render_deadline_owner_panel(deadline_df, filtered_df)
 
-    render_owner_section(filtered_df)
     render_detail_section(filtered_df)
 
 
