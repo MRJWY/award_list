@@ -17,6 +17,39 @@ def is_google_sheet_configured(settings: Settings) -> bool:
     )
 
 
+def build_google_sheet_diagnostics(settings: Settings) -> dict[str, object]:
+    diagnostics: dict[str, object] = {
+        "google_sheet_id_present": bool(settings.google_sheet_id),
+        "google_sheet_id_preview": (
+            f"{settings.google_sheet_id[:6]}...{settings.google_sheet_id[-6:]}"
+            if len(settings.google_sheet_id) >= 12
+            else settings.google_sheet_id
+        ),
+        "proposal_master_sheet": settings.google_worksheet_proposal_master,
+        "product_sheet": settings.google_worksheet_code_map_product,
+        "status_sheet": settings.google_worksheet_code_map_status,
+        "sync_log_sheet": settings.google_worksheet_sync_log,
+        "service_account_json_present": bool(settings.google_service_account_json),
+        "service_account_json_path_present": bool(settings.google_service_account_json_path),
+        "service_account_json_valid": None,
+        "service_account_client_email": "",
+    }
+
+    if settings.google_service_account_json:
+        try:
+            service_account_info = json.loads(settings.google_service_account_json)
+        except json.JSONDecodeError as exc:
+            diagnostics["service_account_json_valid"] = False
+            diagnostics["service_account_json_error"] = str(exc)
+        else:
+            diagnostics["service_account_json_valid"] = True
+            diagnostics["service_account_client_email"] = service_account_info.get("client_email", "")
+    elif settings.google_service_account_json_path:
+        diagnostics["service_account_json_path_exists"] = _service_account_path(settings).exists()
+
+    return diagnostics
+
+
 def _service_account_path(settings: Settings) -> Path:
     raw_path = Path(settings.google_service_account_json_path)
     if raw_path.is_absolute():

@@ -22,7 +22,11 @@ from core.business_logic import (
 )
 from core.settings import load_settings
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
-from integrations.google_sheets import WorkbookLoadResult, load_live_or_cached_workbook_frames
+from integrations.google_sheets import (
+    WorkbookLoadResult,
+    build_google_sheet_diagnostics,
+    load_live_or_cached_workbook_frames,
+)
 
 
 DISPLAY_LABELS = {
@@ -41,12 +45,42 @@ CARD_STYLES = [
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data() -> tuple[pd.DataFrame, str, str]:
+def load_dashboard_data() -> tuple[pd.DataFrame, str, str, dict[str, object]]:
     settings = load_settings()
     load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
-    return normalized, load_result.source, load_result.message
+    diagnostics = build_google_sheet_diagnostics(settings)
+    return normalized, load_result.source, load_result.message, diagnostics
+
+
+def render_connection_diagnostics(load_message: str, diagnostics: dict[str, object]) -> None:
+    with st.expander("Google Sheet Connection Diagnostics", expanded=True):
+        st.code(load_message, language="text")
+
+        client_email = diagnostics.get("service_account_client_email") or "-"
+        sheet_id_preview = diagnostics.get("google_sheet_id_preview") or "-"
+        json_valid = diagnostics.get("service_account_json_valid")
+        json_valid_label = "Y" if json_valid is True else "N" if json_valid is False else "-"
+
+        diagnostic_rows = pd.DataFrame(
+            [
+                {"Item": "GOOGLE_SHEET_ID present", "Value": "Y" if diagnostics.get("google_sheet_id_present") else "N"},
+                {"Item": "GOOGLE_SHEET_ID preview", "Value": sheet_id_preview},
+                {"Item": "Service account JSON present", "Value": "Y" if diagnostics.get("service_account_json_present") else "N"},
+                {"Item": "Service account JSON valid", "Value": json_valid_label},
+                {"Item": "Service account email", "Value": client_email},
+                {"Item": "PROPOSAL_MASTER worksheet", "Value": diagnostics.get("proposal_master_sheet") or "-"},
+                {"Item": "CODE_MAP_PRODUCT worksheet", "Value": diagnostics.get("product_sheet") or "-"},
+                {"Item": "CODE_MAP_STATUS worksheet", "Value": diagnostics.get("status_sheet") or "-"},
+                {"Item": "SYNC_LOG worksheet", "Value": diagnostics.get("sync_log_sheet") or "-"},
+            ]
+        )
+        st.dataframe(diagnostic_rows, use_container_width=True, hide_index=True)
+        st.caption(
+            "If the service account email is shown here, make sure the same email was added to the target Google "
+            "Spreadsheet sharing settings. If JSON valid is N, the GOOGLE_SERVICE_ACCOUNT_JSON secret is usually cut off."
+        )
 
 
 def inject_styles() -> None:
@@ -825,7 +859,7 @@ def main() -> None:
     inject_styles()
 
     try:
-        proposal_df, data_source, load_message = load_dashboard_data()
+        proposal_df, data_source, load_message, diagnostics = load_dashboard_data()
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
@@ -837,7 +871,8 @@ def main() -> None:
     if data_source == "cache":
         st.warning(load_message)
     elif data_source == "empty":
-        st.info(load_message)
+        st.error("Google Sheet connection failed, so no dashboard data is available.")
+        render_connection_diagnostics(load_message, diagnostics)
 
     if proposal_df.empty:
         st.warning("아직 제안 데이터가 없습니다. Google Sheet에 데이터를 입력한 뒤 다시 확인해 주세요.")
