@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Mapping
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -51,12 +52,31 @@ def _streamlit_secret(name: str, default: str = "") -> str:
 
         if not hasattr(st, "secrets"):
             return default
-        value = st.secrets.get(name, default)
+        value = _find_streamlit_secret_value(st.secrets, name, default)
         if value is None:
             return default
         return str(value).strip()
     except Exception:
         return default
+
+
+def _find_streamlit_secret_value(container: object, name: str, default: object = "") -> object:
+    if isinstance(container, Mapping):
+        if name in container:
+            return container.get(name, default)
+
+        lowered_name = name.lower()
+        upper_name = name.upper()
+        for key in (lowered_name, upper_name):
+            if key in container:
+                return container.get(key, default)
+
+        for value in container.values():
+            nested = _find_streamlit_secret_value(value, name, default=None)
+            if nested is not None:
+                return nested
+
+    return default
 
 
 def _config_value(name: str, default: str = "") -> str:
