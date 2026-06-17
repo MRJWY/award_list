@@ -1,0 +1,11 @@
+.env
+secrets/
+__pycache__/
+.pytest_cache/
+.streamlit/secrets.toml
+data/cache/*
+!data/cache/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
+logs/*
+!logs/.gitkeep

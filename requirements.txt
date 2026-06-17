@@ -1,0 +1,7 @@
+pandas>=2.2.0
+streamlit>=1.36.0
+gspread>=6.1.0
+google-auth>=2.30.0
+slack-bolt>=1.19.0
+slack-sdk>=3.31.0
+pytest>=8.2.0
