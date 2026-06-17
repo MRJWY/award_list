@@ -1401,15 +1401,16 @@ def main() -> None:
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
     deadline_df = prepare_deadline_frame(filtered_df)
 
-    panel_columns = st.columns([1.1, 1.1, 1.3])
-    with panel_columns[0]:
-        render_rank_panel("상태별 건수", status_summary, "status_name")
-    with panel_columns[1]:
-        render_rank_panel("제품코드별 건수", product_summary, "product_code")
-    with panel_columns[2]:
+    content_columns = st.columns([2.15, 1.25])
+    with content_columns[0]:
+        summary_columns = st.columns(2)
+        with summary_columns[0]:
+            render_rank_panel("상태별 건수", status_summary, "status_name")
+        with summary_columns[1]:
+            render_rank_panel("제품코드별 건수", product_summary, "product_code")
+        render_detail_section(filtered_df)
+    with content_columns[1]:
         render_deadline_owner_panel(deadline_df, filtered_df)
-
-    render_detail_section(filtered_df)
 
 if __name__ == "__main__":
     main()
