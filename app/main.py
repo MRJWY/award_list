@@ -610,6 +610,12 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
     st.markdown("".join(bar_html), unsafe_allow_html=True)
 
 
+def render_owner_section(df: pd.DataFrame) -> None:
+    owner_summary = aggregate_counts(df, "owner", top_n=12, empty_label="미입력")
+    st.markdown("#### 책임자 현황", unsafe_allow_html=False)
+    render_rank_panel("책임자별 제안 건수", owner_summary, "owner")
+
+
 def prepare_deadline_frame(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "submission_deadline" not in df.columns:
         return df.iloc[0:0].copy()
@@ -907,6 +913,7 @@ def main() -> None:
     with panel_columns[2]:
         render_deadline_panel(deadline_df)
 
+    render_owner_section(filtered_df)
     render_detail_section(filtered_df)
 
 
