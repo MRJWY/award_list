@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import html
 import sys
@@ -32,7 +32,7 @@ from integrations.google_sheets import (
 DISPLAY_LABELS = {
     **PROPOSAL_MASTER_COLUMN_LABELS,
     "days_to_deadline": "D-Day",
-    "deadline_bucket": "마감 구간",
+    "deadline_bucket": "留덇컧 援ш컙",
 }
 
 CARD_STYLES = [
@@ -555,6 +555,84 @@ def inject_styles() -> None:
             font-size: 0.9rem;
         }
 
+        .proposal-feed {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .proposal-feed-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 22px;
+            box-shadow: var(--shadow);
+            padding: 1.05rem 1.1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .proposal-feed-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 0.8rem;
+        }
+
+        .proposal-feed-business {
+            color: var(--text-main);
+            font-size: 1rem;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .proposal-feed-project {
+            color: var(--text-sub);
+            font-size: 0.86rem;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .proposal-feed-meta {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.7rem;
+        }
+
+        .proposal-feed-meta-item {
+            background: #f7f9fd;
+            border-radius: 16px;
+            padding: 0.7rem 0.8rem;
+        }
+
+        .proposal-feed-meta-label {
+            color: var(--text-sub);
+            font-size: 0.76rem;
+            font-weight: 700;
+            margin-bottom: 0.22rem;
+        }
+
+        .proposal-feed-meta-value {
+            color: var(--text-main);
+            font-size: 0.88rem;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        .proposal-feed-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-sub);
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
         .proposal-table {
             width: 100%;
             border-collapse: collapse;
@@ -670,14 +748,14 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             f"""
         <div class="hero-card">
             <div class="hero-title-wrap">
-                <div class="hero-icon">▥</div>
+                <div class="hero-icon">??/div>
                 <div>
-                    <h1 class="hero-title">사업 제안 현황 대시보드</h1>
-                    <p class="hero-subtitle">Google Sheet 입력 데이터를 기준으로 제안 현황, 수주율, 마감 리스크를 한눈에 확인합니다.</p>
+                    <h1 class="hero-title">?ъ뾽 ?쒖븞 ?꾪솴 ??쒕낫??/h1>
+                    <p class="hero-subtitle">Google Sheet ?낅젰 ?곗씠?곕? 湲곗??쇰줈 ?쒖븞 ?꾪솴, ?섏＜?? 留덇컧 由ъ뒪?щ? ?쒕늿???뺤씤?⑸땲??</p>
                 </div>
             </div>
             <div class="hero-meta">
-                <div><strong>최종 업데이트:</strong> {html.escape(format_timestamp(latest_sync))}</div>
+                <div><strong>理쒖쥌 ?낅뜲?댄듃:</strong> {html.escape(format_timestamp(latest_sync))}</div>
                 <div>{source_badge(data_source)}</div>
             </div>
         </div>
@@ -707,10 +785,9 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
 
 def render_metric_row(summary: dict[str, int | float]) -> None:
     total_cost_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
-    total_cost_kkrw = format_count(summary["awarded_government_funding_kkrw"])
     cards = [
-        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "▣", *CARD_STYLES[0]),
-        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "➤", *CARD_STYLES[1]),
+        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "□", *CARD_STYLES[0]),
+        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "▶", *CARD_STYLES[1]),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *CARD_STYLES[2]),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *CARD_STYLES[3]),
         ("정부지원금 합계", total_cost_eok, "억원", "정부지원금 합계", "₩", *CARD_STYLES[4]),
@@ -720,7 +797,6 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
-
 
 def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
@@ -738,7 +814,6 @@ def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], 
         st.cache_data.clear()
         st.rerun()
     return selected_products, selected_statuses, selected_ministries, keyword
-
 
 def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -> None:
     if summary_df.empty:
@@ -777,7 +852,6 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
         )
     bar_html.append("</div></div>")
     st.markdown("".join(bar_html), unsafe_allow_html=True)
-
 
 def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "owner" not in df.columns:
@@ -821,7 +895,6 @@ def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
         by=["proposal_count", "awarded_count", "owner"],
         ascending=[False, False, True],
     ).reset_index(drop=True)
-
 
 def render_owner_section(df: pd.DataFrame) -> None:
     owner_summary = build_owner_summary(df).head(12)
@@ -884,7 +957,6 @@ def render_owner_section(df: pd.DataFrame) -> None:
     cards_html.append("</div>")
     st.markdown("".join(cards_html), unsafe_allow_html=True)
 
-
 def prepare_deadline_frame(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "submission_deadline" not in df.columns:
         return df.iloc[0:0].copy()
@@ -896,7 +968,7 @@ def prepare_deadline_frame(df: pd.DataFrame) -> pd.DataFrame:
 
 def deadline_bucket_counts(df: pd.DataFrame) -> dict[str, int]:
     if df.empty:
-        return {"7일 이내": 0, "8~15일": 0, "16~30일": 0, "30일 초과": 0, "마감 지난": 0}
+        return {"7일 이내": 0, "8~15일": 0, "16~30일": 0, "30일 초과": 0, "마감 지남": 0}
 
     days = df["days_to_deadline"]
     return {
@@ -904,26 +976,21 @@ def deadline_bucket_counts(df: pd.DataFrame) -> dict[str, int]:
         "8~15일": int(days.between(8, 15, inclusive="both").sum()),
         "16~30일": int(days.between(16, 30, inclusive="both").sum()),
         "30일 초과": int(days.gt(30).sum()),
-        "마감 지난": int(days.lt(0).sum()),
+        "마감 지남": int(days.lt(0).sum()),
     }
-
 
 def render_deadline_panel(df: pd.DataFrame) -> None:
     counts = deadline_bucket_counts(df)
-    upcoming_total = counts["7일 이내"] + counts["8~15일"] + counts["16~30일"] + counts["30일 초과"]
-    overdue_total = counts["마감 지난"]
+    bucket_items = list(counts.items())
+    overdue_total = bucket_items[-1][1] if bucket_items else 0
+    upcoming_total = sum(value for _, value in bucket_items[:-1])
     max_bucket = max(max(counts.values()), 1)
 
-    bucket_order = ["7일 이내", "8~15일", "16~30일", "30일 초과", "마감 지난"]
     mini_html = [
         dedent(
-            """
+            f"""
         <div class="panel-card">
             <h3 class="panel-title">마감 예정 / 지난 건</h3>
-        """
-        ),
-        dedent(
-            f"""
         <div class="deadline-stat-grid">
             <div class="deadline-stat-card" style="background:#edf4ff; color:#2f80ed;">
                 <p class="deadline-stat-title">마감 예정 (30일 기준)</p>
@@ -938,10 +1005,9 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
         """
         ),
     ]
-    for bucket in bucket_order:
-        value = counts[bucket]
+    for index, (bucket, value) in enumerate(bucket_items):
         height = max(18, value / max_bucket * 110) if value else 8
-        color = "#2F80ED" if bucket != "마감 지난" else "#F05A5A"
+        color = "#2F80ED" if index < len(bucket_items) - 1 else "#F05A5A"
         mini_html.append(
             dedent(
                 f"""
@@ -958,7 +1024,6 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
         )
     mini_html.append("</div></div>")
     st.markdown("".join(mini_html), unsafe_allow_html=True)
-
 
 def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
     owner_summary = build_owner_summary(df).head(5)
@@ -1014,7 +1079,6 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
         )
     panel_html.append("</div></div>")
     return "".join(panel_html)
-
 
 def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFrame) -> None:
     counts = deadline_bucket_counts(deadline_df)
@@ -1075,22 +1139,6 @@ def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFram
     )
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
-
-def status_pill_class(status_name: str) -> str:
-    normalized = status_name.strip()
-    if normalized == "기회 검토":
-        return "status-review"
-    if normalized == "제안서 작성 중":
-        return "status-draft"
-    if normalized == "제출 완료":
-        return "status-submitted"
-    if normalized == "수주":
-        return "status-awarded"
-    if normalized == "미수주":
-        return "status-not-awarded"
-    return "status-default"
-
-
 def format_deadline(value: object) -> str:
     if pd.isna(value) or value is None:
         return "-"
@@ -1111,7 +1159,7 @@ def format_d_day(value: object) -> tuple[str, str]:
 
 def build_detail_table(df: pd.DataFrame) -> str:
     if df.empty:
-        return '<div class="empty-state">표시할 제안이 없습니다.</div>'
+        return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
 
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
@@ -1122,7 +1170,7 @@ def build_detail_table(df: pd.DataFrame) -> str:
         status_name = str(row.get("status_name", "")).strip() or "미입력"
         d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
         awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
-        awarded_text = "○" if awarded_flag == "Y" else ("×" if awarded_flag == "N" else "-")
+        awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
         rows_html.append(
             f"""
             <tr>
@@ -1145,7 +1193,7 @@ def build_detail_table(df: pd.DataFrame) -> str:
                     <th>사업명</th>
                     <th>과제명</th>
                     <th>상태명</th>
-                    <th>제출마감일</th>
+                    <th>마감일</th>
                     <th>D-Day</th>
                     <th>수주여부</th>
                     <th>책임자</th>
@@ -1160,7 +1208,6 @@ def build_detail_table(df: pd.DataFrame) -> str:
         """
     )
 
-
 def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
@@ -1171,14 +1218,78 @@ def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
             "사업명": table_df["business_name"].fillna("").astype(str).str.strip().replace("", "-"),
             "과제명": table_df["project_name"].fillna("").astype(str).str.strip().replace("", "-"),
             "상태명": table_df["status_name"].fillna("").astype(str).str.strip().replace("", "미입력"),
-            "제출마감일": table_df["submission_deadline"].apply(format_deadline),
+            "마감일": table_df["submission_deadline"].apply(format_deadline),
             "D-Day": table_df["days_to_deadline"].apply(lambda value: format_d_day(value)[0]),
-            "수주여부": table_df["awarded_yn"].fillna("").astype(str).str.upper().map({"Y": "○", "N": "×"}).fillna("-"),
+            "수주여부": table_df["awarded_yn"].fillna("").astype(str).str.upper().map({"Y": "Y", "N": "N"}).fillna("-"),
             "책임자": table_df["owner"].fillna("").astype(str).str.strip().replace("", "-"),
         }
     )
     return display_df.reset_index(drop=True)
 
+def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
+    if df.empty:
+        return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
+
+    feed_df = df.copy()
+    sort_columns: list[str] = []
+    ascending: list[bool] = []
+    for column in ["last_updated_at", "submission_deadline", "proposal_id"]:
+        if column in feed_df.columns:
+            sort_columns.append(column)
+            ascending.append(False)
+    if sort_columns:
+        feed_df = feed_df.sort_values(by=sort_columns, ascending=ascending, na_position="last")
+    feed_df = feed_df.head(limit)
+
+    cards_html: list[str] = ['<div class="proposal-feed">']
+    for _, row in feed_df.iterrows():
+        business_name = str(row.get("business_name", "")).strip() or "-"
+        project_name = str(row.get("project_name", "")).strip() or "-"
+        status_name = str(row.get("status_name", "")).strip() or "미입력"
+        owner_name = str(row.get("owner", "")).strip() or "-"
+        ministry_name = str(row.get("ministry", "")).strip() or "-"
+        updated_at = format_timestamp(row.get("last_updated_at"))
+        deadline_text = format_deadline(row.get("submission_deadline"))
+        d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+
+        cards_html.append(
+            dedent(
+                f"""
+                <div class="proposal-feed-card">
+                    <div class="proposal-feed-top">
+                        <div>
+                            <div class="proposal-feed-business">{html.escape(business_name)}</div>
+                            <div class="proposal-feed-project">{html.escape(project_name)}</div>
+                        </div>
+                        <span class="status-pill {status_pill_class(status_name)}">{html.escape(status_name)}</span>
+                    </div>
+                    <div class="proposal-feed-meta">
+                        <div class="proposal-feed-meta-item">
+                            <div class="proposal-feed-meta-label">담당자</div>
+                            <div class="proposal-feed-meta-value">{html.escape(owner_name)}</div>
+                        </div>
+                        <div class="proposal-feed-meta-item">
+                            <div class="proposal-feed-meta-label">부처</div>
+                            <div class="proposal-feed-meta-value">{html.escape(ministry_name)}</div>
+                        </div>
+                        <div class="proposal-feed-meta-item">
+                            <div class="proposal-feed-meta-label">마감일</div>
+                            <div class="proposal-feed-meta-value">{html.escape(deadline_text)}</div>
+                        </div>
+                        <div class="proposal-feed-meta-item">
+                            <div class="proposal-feed-meta-label">D-Day</div>
+                            <div class="proposal-feed-meta-value"><span class="d-day {d_day_class}">{html.escape(d_day_text)}</span></div>
+                        </div>
+                    </div>
+                    <div class="proposal-feed-footer">
+                        <span>최신 수정 {html.escape(updated_at)}</span>
+                    </div>
+                </div>
+                """
+            )
+        )
+    cards_html.append("</div>")
+    return "".join(cards_html)
 
 def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
     export_columns = [
@@ -1205,11 +1316,10 @@ def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
     available_columns = [column for column in export_columns if column in df.columns]
     export_df = df[available_columns].copy()
     export_df = export_df.rename(columns=DISPLAY_LABELS)
-    for column in ["제출마감일", "최종수정일시"]:
+    for column in [DISPLAY_LABELS.get("submission_deadline", "submission_deadline"), DISPLAY_LABELS.get("last_updated_at", "last_updated_at")]:
         if column in export_df.columns:
-            export_df[column] = export_df[column].apply(format_deadline if column == "제출마감일" else format_timestamp)
+            export_df[column] = export_df[column].apply(format_deadline if column == DISPLAY_LABELS.get("submission_deadline", "submission_deadline") else format_timestamp)
     return export_df
-
 
 def render_detail_section(df: pd.DataFrame) -> None:
     toolbar_left, toolbar_right = st.columns([0.8, 0.2])
@@ -1217,7 +1327,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">필터가 적용된 제안 목록입니다. 상세 값 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">필터가 적용된 제안 중 최신 수정순 12건을 보여줍니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
         """
         ),
         unsafe_allow_html=True,
@@ -1229,20 +1339,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         mime="text/csv",
         use_container_width=True,
     )
-    st.dataframe(
-        build_detail_display_frame(df),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "사업명": st.column_config.TextColumn(width="medium"),
-            "과제명": st.column_config.TextColumn(width="large"),
-            "상태명": st.column_config.TextColumn(width="small"),
-            "제출마감일": st.column_config.TextColumn(width="small"),
-            "D-Day": st.column_config.TextColumn(width="small"),
-            "수주여부": st.column_config.TextColumn(width="small"),
-            "책임자": st.column_config.TextColumn(width="small"),
-        },
-    )
+    st.markdown(build_recent_proposal_feed_html(df), unsafe_allow_html=True)
 
 
 def main() -> None:
@@ -1300,6 +1397,11 @@ def main() -> None:
 
     render_detail_section(filtered_df)
 
-
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
