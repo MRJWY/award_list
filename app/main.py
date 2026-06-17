@@ -1139,6 +1139,20 @@ def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFram
     )
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
+def status_pill_class(status_name: str) -> str:
+    normalized = status_name.strip()
+    if normalized == "기회 검토":
+        return "status-review"
+    if normalized == "제안서 작성 중":
+        return "status-draft"
+    if normalized == "제출 완료":
+        return "status-submitted"
+    if normalized == "수주":
+        return "status-awarded"
+    if normalized == "미수주":
+        return "status-not-awarded"
+    return "status-default"
+
 def format_deadline(value: object) -> str:
     if pd.isna(value) or value is None:
         return "-"
