@@ -362,6 +362,108 @@ def inject_styles() -> None:
             line-height: 1.35;
         }
 
+        .owner-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-top: 0.35rem;
+        }
+
+        .owner-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 22px;
+            box-shadow: var(--shadow);
+            padding: 1.1rem 1.15rem;
+        }
+
+        .owner-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 0.75rem;
+            margin-bottom: 0.9rem;
+        }
+
+        .owner-name {
+            color: var(--text-main);
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .owner-subtext {
+            color: var(--text-sub);
+            font-size: 0.86rem;
+            margin-top: 0.2rem;
+        }
+
+        .owner-awarded {
+            display: flex;
+            flex-direction: column;
+            align-items: end;
+            gap: 0.15rem;
+        }
+
+        .owner-awarded-label {
+            color: var(--text-sub);
+            font-size: 0.76rem;
+            font-weight: 700;
+        }
+
+        .owner-awarded-value {
+            color: #8E5CF6;
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .owner-stack {
+            display: flex;
+            width: 100%;
+            height: 14px;
+            background: #eef2ff;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .owner-stack-segment {
+            height: 100%;
+        }
+
+        .owner-submitted {
+            background: #27AE60;
+        }
+
+        .owner-awarded-segment {
+            background: #8E5CF6;
+        }
+
+        .owner-not-awarded {
+            background: #2F80ED;
+        }
+
+        .owner-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.65rem 0.9rem;
+            margin-top: 0.85rem;
+            color: var(--text-sub);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .owner-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .legend-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+
         .table-card {
             padding: 1.15rem 1.2rem 1.1rem;
         }
@@ -610,10 +712,110 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
     st.markdown("".join(bar_html), unsafe_allow_html=True)
 
 
+def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "owner" not in df.columns:
+        return pd.DataFrame(
+            columns=[
+                "owner",
+                "proposal_count",
+                "submitted_only_count",
+                "awarded_count",
+                "not_awarded_count",
+            ]
+        )
+
+    owner_series = df["owner"].fillna("").astype(str).str.strip().replace("", "미입력")
+    status_code_series = df["status_code"].fillna("").astype(str).str.upper().str.strip()
+    awarded_flag_series = df["awarded_yn"].fillna("").astype(str).str.upper().str.strip()
+
+    summary = (
+        pd.DataFrame(
+            {
+                "owner": owner_series,
+                "submitted_only_count": status_code_series.eq("SUBMITTED").astype(int),
+                "awarded_count": (status_code_series.eq("AWARDED") | awarded_flag_series.eq("Y")).astype(int),
+                "not_awarded_count": status_code_series.eq("NOT_AWARDED").astype(int),
+            }
+        )
+        .groupby("owner", dropna=False)
+        .sum()
+        .reset_index()
+    )
+    summary["proposal_count"] = (
+        summary["submitted_only_count"] + summary["awarded_count"] + summary["not_awarded_count"]
+    )
+
+    raw_total = owner_series.value_counts().rename_axis("owner").reset_index(name="raw_count")
+    summary = summary.merge(raw_total, on="owner", how="left")
+    summary["proposal_count"] = summary[["proposal_count", "raw_count"]].max(axis=1)
+    summary = summary.drop(columns=["raw_count"])
+
+    return summary.sort_values(
+        by=["proposal_count", "awarded_count", "owner"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+
 def render_owner_section(df: pd.DataFrame) -> None:
-    owner_summary = aggregate_counts(df, "owner", top_n=12, empty_label="미입력")
+    owner_summary = build_owner_summary(df).head(12)
     st.markdown("#### 책임자 현황", unsafe_allow_html=False)
-    render_rank_panel("책임자별 제안 건수", owner_summary, "owner")
+
+    if owner_summary.empty:
+        st.markdown(
+            """
+            <div class="panel-card">
+                <h3 class="panel-title">책임자별 제안 현황</h3>
+                <div class="empty-state">표시할 책임자 데이터가 없습니다.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
+    cards_html: list[str] = ['<div class="owner-grid">']
+    for _, row in owner_summary.iterrows():
+        owner_name = str(row["owner"]).strip() or "미입력"
+        proposal_count = int(row["proposal_count"])
+        submitted_only_count = int(row["submitted_only_count"])
+        awarded_count = int(row["awarded_count"])
+        not_awarded_count = int(row["not_awarded_count"])
+
+        stack_total = max(submitted_only_count + awarded_count + not_awarded_count, 1)
+        submitted_width = submitted_only_count / stack_total * 100
+        awarded_width = awarded_count / stack_total * 100
+        not_awarded_width = not_awarded_count / stack_total * 100
+
+        cards_html.append(
+            dedent(
+                f"""
+                <div class="owner-card">
+                    <div class="owner-card-top">
+                        <div>
+                            <div class="owner-name">{html.escape(owner_name)}</div>
+                            <div class="owner-subtext">총 {proposal_count}건</div>
+                        </div>
+                        <div class="owner-awarded">
+                            <span class="owner-awarded-label">수주</span>
+                            <span class="owner-awarded-value">{awarded_count}건</span>
+                        </div>
+                    </div>
+                    <div class="owner-stack">
+                        <div class="owner-stack-segment owner-submitted" style="width:{submitted_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-awarded-segment" style="width:{awarded_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-not-awarded" style="width:{not_awarded_width:.1f}%"></div>
+                    </div>
+                    <div class="owner-legend">
+                        <span><i class="legend-dot owner-submitted"></i>제출완료 {submitted_only_count}</span>
+                        <span><i class="legend-dot owner-awarded-segment"></i>수주 {awarded_count}</span>
+                        <span><i class="legend-dot owner-not-awarded"></i>미수주 {not_awarded_count}</span>
+                    </div>
+                </div>
+                """
+            )
+        )
+
+    cards_html.append("</div>")
+    st.markdown("".join(cards_html), unsafe_allow_html=True)
 
 
 def prepare_deadline_frame(df: pd.DataFrame) -> pd.DataFrame:
