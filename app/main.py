@@ -237,8 +237,8 @@ def inject_styles() -> None:
         }
 
         .panel-card {
-            padding: 1.2rem 1.25rem 1rem;
-            min-height: 410px;
+            padding: 1.15rem 1.2rem 1rem;
+            min-height: 360px;
         }
 
         .panel-title {
@@ -557,9 +557,9 @@ def inject_styles() -> None:
 
         .proposal-feed {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 0.9rem;
+            margin-top: 0.9rem;
         }
 
         .proposal-feed-card {
@@ -631,6 +631,10 @@ def inject_styles() -> None:
             color: var(--text-sub);
             font-size: 0.8rem;
             font-weight: 700;
+        }
+
+        .top-panel-row {
+            margin-top: 0.55rem;
         }
 
         .proposal-table {
@@ -1026,7 +1030,7 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
 def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
-    owner_summary = build_owner_summary(df).head(5)
+    owner_summary = build_owner_summary(df).head(3)
 
     panel_html = [
         """
@@ -1079,6 +1083,12 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
         )
     panel_html.append("</div></div>")
     return "".join(panel_html)
+
+def render_owner_summary_panel(df: pd.DataFrame) -> None:
+    st.markdown(
+        '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
+        unsafe_allow_html=True,
+    )
 
 def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFrame) -> None:
     counts = deadline_bucket_counts(deadline_df)
@@ -1399,18 +1409,15 @@ def main() -> None:
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=8, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    deadline_df = prepare_deadline_frame(filtered_df)
+    top_columns = st.columns(3)
+    with top_columns[0]:
+        render_rank_panel("상태별 건수", status_summary, "status_name")
+    with top_columns[1]:
+        render_rank_panel("제품코드별 건수", product_summary, "product_code")
+    with top_columns[2]:
+        render_owner_summary_panel(filtered_df)
 
-    content_columns = st.columns([2.15, 1.25])
-    with content_columns[0]:
-        summary_columns = st.columns(2)
-        with summary_columns[0]:
-            render_rank_panel("상태별 건수", status_summary, "status_name")
-        with summary_columns[1]:
-            render_rank_panel("제품코드별 건수", product_summary, "product_code")
-        render_detail_section(filtered_df)
-    with content_columns[1]:
-        render_deadline_owner_panel(deadline_df, filtered_df)
+    render_detail_section(filtered_df)
 
 if __name__ == "__main__":
     main()
