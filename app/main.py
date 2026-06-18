@@ -39,12 +39,14 @@ DISPLAY_LABELS = {
 }
 
 CARD_STYLES = [
-    ("#2F80ED", "#EAF2FF"),
-    ("#27AE60", "#EAF8F0"),
-    ("#8E5CF6", "#F2EBFF"),
-    ("#F39C12", "#FFF4E5"),
-    ("#F05A5A", "#FFECEC"),
+    ("var(--accent)", "var(--accent-muted)"),
+    ("var(--success)", "rgba(22, 163, 74, 0.10)"),
+    ("var(--warning)", "rgba(217, 119, 6, 0.10)"),
+    ("var(--info)", "rgba(37, 99, 235, 0.10)"),
+    ("var(--error)", "rgba(220, 38, 38, 0.10)"),
 ]
+
+METRIC_CARD_STYLE = ("var(--accent)", "var(--accent-muted)")
 
 OWNER_STAGE_SPECS = [
     ("submitted_only_count", "제출완료", "owner-submitted"),
@@ -104,94 +106,221 @@ def inject_styles() -> None:
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@700;800&display=swap');
 
         :root {
-            --page-bg: linear-gradient(180deg, #f5f8ff 0%, #f8fafc 100%);
-            --panel-bg: rgba(255, 255, 255, 0.92);
-            --panel-border: rgba(148, 163, 184, 0.18);
-            --text-main: #1f2a44;
-            --text-sub: #6b7a99;
-            --shadow: 0 16px 40px rgba(31, 42, 68, 0.08);
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-full: 9999px;
+
+            --accent: #5b5bd6;
+            --accent-hover: #4f4fc8;
+            --accent-muted: hsl(240 55% 96%);
+
+            --grey-50: hsl(240 20% 98%);
+            --grey-100: hsl(240 18% 96%);
+            --grey-200: hsl(240 14% 90%);
+            --grey-300: hsl(240 12% 82%);
+            --grey-500: hsl(240 8% 55%);
+            --grey-700: hsl(240 10% 32%);
+            --grey-900: hsl(240 12% 14%);
+
+            --success: #16a34a;
+            --warning: #d97706;
+            --error: #dc2626;
+            --info: #2563eb;
+
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-6: 24px;
+            --space-8: 32px;
+            --space-12: 48px;
+            --space-16: 64px;
+
+            --text-xs: 12px;
+            --text-sm: 14px;
+            --text-md: 16px;
+            --text-lg: 18px;
+            --text-xl: 24px;
+            --text-2xl: 32px;
+
+            --line-tight: 1.25;
+            --line-normal: 1.5;
+            --line-loose: 1.7;
+
+            --control-sm: 32px;
+            --control-md: 40px;
+            --control-lg: 48px;
+
+            --motion-fast: 120ms;
+            --motion-normal: 180ms;
+            --motion-slow: 240ms;
+            --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+            --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
+
+            --shadow-sm: 0 1px 2px hsl(220 40% 20% / 0.06);
+            --shadow-md:
+                0 1px 2px hsl(220 40% 20% / 0.08),
+                0 2px 4px hsl(220 40% 20% / 0.08),
+                0 4px 8px hsl(220 40% 20% / 0.08);
+            --shadow-lg:
+                0 2px 4px hsl(220 40% 20% / 0.07),
+                0 6px 12px hsl(220 40% 20% / 0.07),
+                0 12px 24px hsl(220 40% 20% / 0.07);
+            --shadow-xl:
+                0 2px 4px hsl(220 40% 20% / 0.06),
+                0 8px 16px hsl(220 40% 20% / 0.06),
+                0 16px 32px hsl(220 40% 20% / 0.06),
+                0 32px 64px hsl(220 40% 20% / 0.06);
+
+            --font-sans: "Pretendard Variable", "Noto Sans KR", sans-serif;
+            --font-display: "Nunito", "Pretendard Variable", "Noto Sans KR", sans-serif;
+
+            --page-bg: linear-gradient(180deg, var(--grey-50) 0%, #ffffff 58%, var(--grey-100) 100%);
+            --panel-bg: rgba(255, 255, 255, 0.94);
+            --panel-border: var(--grey-200);
+            --text-main: var(--grey-900);
+            --text-sub: var(--grey-700);
         }
 
         .stApp {
             background: var(--page-bg);
+            color: var(--text-main);
+            font-family: var(--font-sans);
         }
 
         .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2.25rem;
+            padding-top: var(--space-8);
+            padding-bottom: var(--space-8);
             max-width: 1400px;
         }
 
         .dashboard-shell {
             display: flex;
             flex-direction: column;
-            gap: 1.1rem;
+            gap: var(--space-4);
         }
 
         .hero-card, .filter-card, .panel-card, .table-card, .metric-card {
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
-            border-radius: 24px;
-            box-shadow: var(--shadow);
-            backdrop-filter: blur(10px);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
         }
 
         .hero-card {
-            padding: 1.25rem 1.5rem;
+            padding: var(--space-6);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-4);
         }
 
         .hero-title-wrap {
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: var(--space-4);
         }
 
         .hero-icon {
-            width: 54px;
-            height: 54px;
-            border-radius: 18px;
-            background: linear-gradient(135deg, #2f80ed, #5d9cff);
+            width: 56px;
+            height: 56px;
+            border-radius: var(--radius-md);
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover));
             display: flex;
             align-items: center;
             justify-content: center;
             color: #fff;
-            font-size: 1.5rem;
-            box-shadow: 0 14px 30px rgba(47, 128, 237, 0.3);
+            font-size: var(--text-xl);
+            box-shadow: var(--shadow-lg);
         }
 
         .hero-title {
             margin: 0;
             color: var(--text-main);
-            font-family: "Nunito", "Pretendard Variable", "Noto Sans KR", sans-serif;
-            font-size: 2rem;
+            font-family: var(--font-display);
+            font-size: var(--text-2xl);
             font-weight: 800;
             letter-spacing: -0.04em;
+            line-height: var(--line-tight);
         }
 
         .hero-subtitle {
-            margin: 0.35rem 0 0;
+            margin: var(--space-2) 0 0;
             color: var(--text-sub);
-            font-size: 0.94rem;
+            font-size: var(--text-sm);
+            line-height: var(--line-normal);
         }
 
         .hero-meta {
             text-align: right;
             color: var(--text-sub);
-            font-size: 0.92rem;
-            line-height: 1.55;
+            font-size: var(--text-sm);
+            line-height: var(--line-normal);
             white-space: nowrap;
         }
 
         .filter-card {
-            padding: 0.95rem 1.1rem 0.25rem;
+            padding: var(--space-4) var(--space-4) var(--space-1);
+        }
+
+        .stMultiSelect [data-baseweb="select"] {
+            min-height: var(--control-md);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--grey-200);
+            box-shadow: none;
+            background: #fff;
+            transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+        }
+
+        .stTextInput input {
+            min-height: var(--control-md);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--grey-200);
+            box-shadow: none;
+            background: #fff;
+            color: var(--text-main);
+            font-size: var(--text-sm);
+            transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+        }
+
+        .stTextInput input::placeholder {
+            color: var(--grey-500);
+        }
+
+        .stMultiSelect [data-baseweb="select"]:focus-within,
+        .stTextInput input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(91, 91, 214, 0.12);
+        }
+
+        .stButton > button,
+        .stDownloadButton > button {
+            height: var(--control-md);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--grey-200);
+            background: #fff;
+            color: var(--text-main);
+            box-shadow: var(--shadow-sm);
+            padding: 0 var(--space-4);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            transition:
+                background var(--motion-fast) var(--ease-standard),
+                border-color var(--motion-fast) var(--ease-standard),
+                color var(--motion-fast) var(--ease-standard),
+                transform var(--motion-fast) var(--ease-standard);
+        }
+
+        .stButton > button:hover,
+        .stDownloadButton > button:hover {
+            border-color: var(--accent);
+            background: var(--accent-muted);
+            color: var(--accent-hover);
         }
 
         .metric-card {
-            padding: 1.15rem 1.15rem 1rem;
+            padding: var(--space-4);
             height: 188px;
             display: flex;
             flex-direction: column;
@@ -201,56 +330,57 @@ def inject_styles() -> None:
         .metric-top {
             display: flex;
             align-items: center;
-            gap: 0.9rem;
+            gap: var(--space-3);
         }
 
         .metric-icon {
             width: 52px;
             height: 52px;
-            border-radius: 18px;
+            border-radius: var(--radius-sm);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.45rem;
+            font-size: var(--text-lg);
             font-weight: 700;
         }
 
         .metric-label {
             color: var(--text-main);
-            font-size: 1.02rem;
+            font-size: var(--text-md);
             font-weight: 700;
         }
 
         .metric-value {
-            margin: 0.8rem 0 0;
+            margin: var(--space-3) 0 0;
             color: var(--text-main);
-            font-family: "Nunito", "Pretendard Variable", "Noto Sans KR", sans-serif;
-            font-size: 2.1rem;
+            font-family: var(--font-display);
+            font-size: var(--text-2xl);
             font-weight: 800;
             letter-spacing: -0.05em;
+            line-height: var(--line-tight);
         }
 
         .metric-unit {
             color: var(--text-sub);
-            font-size: 1rem;
+            font-size: var(--text-md);
             font-weight: 700;
-            margin-left: 0.35rem;
+            margin-left: var(--space-1);
         }
 
         .metric-caption {
             color: var(--text-sub);
-            font-size: 0.88rem;
-            line-height: 1.45;
+            font-size: var(--text-sm);
+            line-height: var(--line-normal);
             min-height: 2.6em;
         }
 
         .metric-caption-compact {
-            font-size: 0.8rem;
-            line-height: 1.35;
+            font-size: var(--text-xs);
+            line-height: var(--line-normal);
         }
 
         .panel-card {
-            padding: 1.1rem 1.15rem 0.95rem;
+            padding: var(--space-4);
             min-height: 340px;
             height: 100%;
             display: flex;
@@ -258,10 +388,11 @@ def inject_styles() -> None:
         }
 
         .panel-title {
-            margin: 0 0 1rem;
+            margin: 0 0 var(--space-4);
             color: var(--text-main);
-            font-size: 1.08rem;
+            font-size: var(--text-lg);
             font-weight: 800;
+            line-height: var(--line-tight);
         }
 
         .bar-list {
@@ -406,8 +537,8 @@ def inject_styles() -> None:
         .compact-owner-row {
             background: rgba(247, 249, 253, 0.9);
             border: 1px solid rgba(226, 232, 240, 0.95);
-            border-radius: 18px;
-            padding: 0.72rem 0.82rem;
+            border-radius: var(--radius-sm);
+            padding: var(--space-3);
             display: flex;
             flex-direction: column;
             min-height: 122px;
@@ -460,9 +591,9 @@ def inject_styles() -> None:
         .owner-card {
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
-            border-radius: 22px;
-            box-shadow: var(--shadow);
-            padding: 1.1rem 1.15rem;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-4);
             height: 100%;
             display: flex;
             flex-direction: column;
@@ -521,27 +652,27 @@ def inject_styles() -> None:
         }
 
         .owner-submitted {
-            background: #27AE60;
+            background: var(--accent);
         }
 
         .owner-awarded-segment {
-            background: #8E5CF6;
+            background: var(--success);
         }
 
         .owner-not-awarded {
-            background: #2F80ED;
+            background: var(--error);
         }
 
         .owner-selection-wait {
-            background: #F2C94C;
+            background: var(--warning);
         }
 
         .owner-announcement-wait {
-            background: #56CCF2;
+            background: var(--info);
         }
 
         .owner-document-eval {
-            background: #F2994A;
+            background: var(--accent-hover);
         }
 
         .owner-other {
@@ -574,7 +705,7 @@ def inject_styles() -> None:
         }
 
         .table-card {
-            padding: 1.15rem 1.2rem 1.1rem;
+            padding: var(--space-4);
         }
 
         .table-toolbar {
@@ -588,7 +719,7 @@ def inject_styles() -> None:
         .section-title {
             margin: 0;
             color: var(--text-main);
-            font-size: 1.12rem;
+            font-size: var(--text-lg);
             font-weight: 800;
         }
 
@@ -608,9 +739,9 @@ def inject_styles() -> None:
         .proposal-feed-card {
             background: var(--panel-bg);
             border: 1px solid var(--panel-border);
-            border-radius: 22px;
-            box-shadow: var(--shadow);
-            padding: 1.05rem 1.1rem;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-4);
             display: flex;
             flex-direction: column;
             gap: 0.8rem;
@@ -655,9 +786,9 @@ def inject_styles() -> None:
         }
 
         .proposal-feed-meta-item {
-            background: #f7f9fd;
-            border-radius: 16px;
-            padding: 0.7rem 0.8rem;
+            background: var(--grey-50);
+            border-radius: var(--radius-sm);
+            padding: var(--space-3);
             min-height: 4.6rem;
         }
 
@@ -694,29 +825,29 @@ def inject_styles() -> None:
             width: 100%;
             border-collapse: collapse;
             overflow: hidden;
-            border-radius: 18px;
+            border-radius: var(--radius-md);
         }
 
         .proposal-table thead th {
-            background: #f7f9fd;
+            background: var(--grey-50);
             color: var(--text-main);
-            font-size: 0.9rem;
+            font-size: var(--text-sm);
             font-weight: 800;
-            padding: 0.9rem 0.8rem;
+            padding: var(--space-3);
             text-align: left;
-            border-bottom: 1px solid #e5ecf6;
+            border-bottom: 1px solid var(--grey-200);
         }
 
         .proposal-table tbody td {
-            padding: 0.88rem 0.8rem;
-            font-size: 0.9rem;
-            color: #334155;
-            border-bottom: 1px solid #eef3fa;
+            padding: var(--space-3);
+            font-size: var(--text-sm);
+            color: var(--text-main);
+            border-bottom: 1px solid var(--grey-100);
             vertical-align: middle;
         }
 
         .proposal-table tbody tr:hover td {
-            background: #fafcff;
+            background: var(--grey-50);
         }
 
         .filter-button-spacer {
@@ -727,19 +858,23 @@ def inject_styles() -> None:
             display: inline-flex;
             align-items: center;
             justify-content: center;
+            min-height: var(--control-sm);
             min-width: 84px;
-            padding: 0.35rem 0.7rem;
-            border-radius: 999px;
-            font-size: 0.82rem;
+            padding: 0 var(--space-3);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
             font-weight: 800;
         }
 
-        .status-review { background: #e8f0ff; color: #2f80ed; }
-        .status-draft { background: #eef2ff; color: #5061d3; }
-        .status-submitted { background: #e9f9ef; color: #27ae60; }
-        .status-awarded { background: #f3ebff; color: #8e5cf6; }
-        .status-not-awarded { background: #ffeaea; color: #f05a5a; }
-        .status-default { background: #eef2f7; color: #64748b; }
+        .status-review { background: var(--grey-100); color: var(--grey-700); }
+        .status-draft { background: var(--accent-muted); color: var(--accent-hover); }
+        .status-submitted { background: rgba(37, 99, 235, 0.10); color: var(--info); }
+        .status-awarded { background: rgba(22, 163, 74, 0.10); color: var(--success); }
+        .status-selection-wait { background: rgba(217, 119, 6, 0.10); color: var(--warning); }
+        .status-announcement-wait { background: rgba(91, 91, 214, 0.10); color: var(--accent); }
+        .status-document-eval { background: rgba(37, 99, 235, 0.10); color: var(--info); }
+        .status-not-awarded { background: rgba(220, 38, 38, 0.10); color: var(--error); }
+        .status-default { background: var(--grey-100); color: var(--grey-700); }
 
         .d-day {
             font-weight: 800;
@@ -760,13 +895,14 @@ def inject_styles() -> None:
         .source-badge {
             display: inline-flex;
             align-items: center;
-            gap: 0.4rem;
-            padding: 0.4rem 0.7rem;
-            border-radius: 999px;
-            font-size: 0.82rem;
+            gap: var(--space-1);
+            padding: 0 var(--space-3);
+            min-height: var(--control-sm);
+            border-radius: var(--radius-full);
+            font-size: var(--text-xs);
             font-weight: 700;
-            background: #eef4ff;
-            color: #4863a0;
+            background: var(--accent-muted);
+            color: var(--accent-hover);
         }
         </style>
         """
@@ -844,11 +980,11 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     total_project_cost_eok = format_eok_from_kkrw(summary["awarded_total_project_cost_kkrw"])
     government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
-        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "□", *CARD_STYLES[0]),
-        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "▶", *CARD_STYLES[1]),
-        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *CARD_STYLES[2]),
-        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *CARD_STYLES[3]),
-        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "₩", *CARD_STYLES[4]),
+        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "□", *METRIC_CARD_STYLE),
+        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "▶", *METRIC_CARD_STYLE),
+        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *METRIC_CARD_STYLE),
+        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *METRIC_CARD_STYLE),
+        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "₩", *METRIC_CARD_STYLE),
     ]
 
     columns = st.columns(5)
@@ -1239,13 +1375,21 @@ def status_pill_class(status_name: str) -> str:
     normalized = status_name.strip()
     if normalized == "기회 검토":
         return "status-review"
+    if normalized == "입찰 여부 결정":
+        return "status-review"
     if normalized == "제안서 작성 중":
         return "status-draft"
     if normalized == "제출 완료":
         return "status-submitted"
+    if normalized == "서면평가":
+        return "status-document-eval"
+    if normalized == "선정대기":
+        return "status-selection-wait"
+    if normalized in {"발표대기", "발표평가"}:
+        return "status-announcement-wait"
     if normalized == "수주":
         return "status-awarded"
-    if normalized == "미수주":
+    if normalized in {"미수주", "미선정"}:
         return "status-not-awarded"
     return "status-default"
 
