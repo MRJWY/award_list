@@ -17,6 +17,8 @@ from core.business_logic import (
     add_deadline_health_columns,
     aggregate_counts,
     filter_proposals,
+    sort_status_values,
+    status_sort_rank,
     status_stage_masks,
     submitted_proposal_mask,
     summarize_proposals,
@@ -858,7 +860,7 @@ def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], 
     st.markdown("#### 필터", unsafe_allow_html=False)
     filter_columns = st.columns([1.05, 1.05, 1.05, 1.45, 0.45], vertical_alignment="bottom")
     product_options = sorted([value for value in proposal_df["product_code"].dropna().unique() if str(value).strip()])
-    status_options = sorted([value for value in proposal_df["status_name"].dropna().unique() if str(value).strip()])
+    status_options = sort_status_values([value for value in proposal_df["status_name"].dropna().unique() if str(value).strip()])
     ministry_options = sorted([value for value in proposal_df["ministry"].dropna().unique() if str(value).strip()])
 
     selected_products = filter_columns[0].multiselect("제품코드", product_options, placeholder="전체")
@@ -1271,7 +1273,10 @@ def build_detail_table(df: pd.DataFrame) -> str:
 
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
-        table_df = table_df.sort_values(by=["submission_deadline", "proposal_id"], na_position="last")
+        table_df = table_df.assign(
+            _status_rank=table_df["status_name"].fillna("").astype(str).map(status_sort_rank)
+        ).sort_values(by=["_status_rank", "submission_deadline", "proposal_id"], ascending=[True, True, True], na_position="last")
+        table_df = table_df.drop(columns=["_status_rank"])
 
     rows_html: list[str] = []
     for _, row in table_df.iterrows():
@@ -1319,7 +1324,10 @@ def build_detail_table(df: pd.DataFrame) -> str:
 def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
-        table_df = table_df.sort_values(by=["submission_deadline", "proposal_id"], na_position="last")
+        table_df = table_df.assign(
+            _status_rank=table_df["status_name"].fillna("").astype(str).map(status_sort_rank)
+        ).sort_values(by=["_status_rank", "submission_deadline", "proposal_id"], ascending=[True, True, True], na_position="last")
+        table_df = table_df.drop(columns=["_status_rank"])
 
     display_df = pd.DataFrame(
         {
@@ -1339,14 +1347,21 @@ def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
         return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
 
     feed_df = df.copy()
-    sort_columns: list[str] = []
-    ascending: list[bool] = []
-    for column in ["last_updated_at", "submission_deadline", "proposal_id"]:
-        if column in feed_df.columns:
-            sort_columns.append(column)
-            ascending.append(False)
-    if sort_columns:
-        feed_df = feed_df.sort_values(by=sort_columns, ascending=ascending, na_position="last")
+    feed_df = feed_df.assign(
+        _status_rank=feed_df["status_name"].fillna("").astype(str).map(status_sort_rank)
+    )
+    sort_columns: list[str] = ["_status_rank"]
+    ascending: list[bool] = [True]
+    if "last_updated_at" in feed_df.columns:
+        sort_columns.append("last_updated_at")
+        ascending.append(False)
+    if "submission_deadline" in feed_df.columns:
+        sort_columns.append("submission_deadline")
+        ascending.append(True)
+    if "proposal_id" in feed_df.columns:
+        sort_columns.append("proposal_id")
+        ascending.append(True)
+    feed_df = feed_df.sort_values(by=sort_columns, ascending=ascending, na_position="last").drop(columns=["_status_rank"])
     feed_df = feed_df.head(limit)
 
     cards_html: list[str] = ['<div class="proposal-feed">']
@@ -1491,7 +1506,7 @@ def main() -> None:
     render_metric_row(summary)
     st.caption("수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 제출 후 단계로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
-    status_summary = aggregate_counts(filtered_df, "status_name", top_n=8, empty_label="미입력")
+    status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
     top_columns = st.columns(3, gap="small")
     with top_columns[0]:

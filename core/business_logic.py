@@ -5,6 +5,22 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 
+STATUS_DISPLAY_SEQUENCE = [
+    "수주",
+    "선정대기",
+    "발표평가",
+    "발표대기",
+    "서면평가",
+    "제출 완료",
+    "제안서 작성 중",
+    "입찰 여부 결정",
+    "기회 검토",
+    "미선정",
+    "미수주",
+]
+STATUS_SORT_ORDER = {status: index for index, status in enumerate(STATUS_DISPLAY_SEQUENCE)}
+
+
 SUBMITTED_ONLY_STATUS_CODES = {"SUBMITTED"}
 SUBMITTED_ONLY_STATUS_NAMES = {"제출 완료"}
 AWARDED_STATUS_CODES = {"AWARDED"}
@@ -34,6 +50,15 @@ SUBMITTED_STATUS_NAMES = (
     | ANNOUNCEMENT_WAIT_STATUS_NAMES
     | DOCUMENT_EVAL_STATUS_NAMES
 )
+
+
+def status_sort_rank(status_name: object) -> int:
+    normalized = str(status_name or "").strip()
+    return STATUS_SORT_ORDER.get(normalized, len(STATUS_SORT_ORDER))
+
+
+def sort_status_values(values: list[str]) -> list[str]:
+    return sorted(values, key=lambda value: (status_sort_rank(value), str(value).strip()))
 
 
 def status_stage_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
@@ -219,8 +244,14 @@ def aggregate_counts(df: pd.DataFrame, column: str, *, top_n: int = 10, empty_la
         .groupby(column, dropna=False)
         .size()
         .reset_index(name="proposal_count")
-        .sort_values(by=["proposal_count", column], ascending=[False, True])
     )
+    if column == "status_name":
+        summary["_sort_rank"] = summary[column].map(status_sort_rank)
+        summary = summary.sort_values(by=["_sort_rank", "proposal_count", column], ascending=[True, False, True]).drop(
+            columns=["_sort_rank"]
+        )
+    else:
+        summary = summary.sort_values(by=["proposal_count", column], ascending=[False, True])
     return summary.head(top_n)
 
 
