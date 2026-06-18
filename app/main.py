@@ -508,6 +508,10 @@ def inject_styles() -> None:
             background: #2F80ED;
         }
 
+        .owner-other {
+            background: #94A3B8;
+        }
+
         .owner-legend {
             display: flex;
             flex-wrap: wrap;
@@ -867,20 +871,28 @@ def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
                 "submitted_only_count",
                 "awarded_count",
                 "not_awarded_count",
+                "other_count",
             ]
         )
 
     owner_series = df["owner"].fillna("").astype(str).str.strip().replace("", "미입력")
     status_code_series = df["status_code"].fillna("").astype(str).str.upper().str.strip()
+    status_name_series = df["status_name"].fillna("").astype(str).str.strip()
     awarded_flag_series = df["awarded_yn"].fillna("").astype(str).str.upper().str.strip()
+
+    awarded_mask = status_code_series.eq("AWARDED") | status_name_series.eq("수주") | awarded_flag_series.eq("Y")
+    not_awarded_mask = status_code_series.eq("NOT_AWARDED") | status_name_series.eq("미수주")
+    submitted_only_mask = (status_code_series.eq("SUBMITTED") | status_name_series.eq("제출 완료")) & ~awarded_mask & ~not_awarded_mask
+    other_mask = ~(submitted_only_mask | awarded_mask | not_awarded_mask)
 
     summary = (
         pd.DataFrame(
             {
                 "owner": owner_series,
-                "submitted_only_count": status_code_series.eq("SUBMITTED").astype(int),
-                "awarded_count": (status_code_series.eq("AWARDED") | awarded_flag_series.eq("Y")).astype(int),
-                "not_awarded_count": status_code_series.eq("NOT_AWARDED").astype(int),
+                "submitted_only_count": submitted_only_mask.astype(int),
+                "awarded_count": awarded_mask.astype(int),
+                "not_awarded_count": not_awarded_mask.astype(int),
+                "other_count": other_mask.astype(int),
             }
         )
         .groupby("owner", dropna=False)
@@ -888,7 +900,7 @@ def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     summary["proposal_count"] = (
-        summary["submitted_only_count"] + summary["awarded_count"] + summary["not_awarded_count"]
+        summary["submitted_only_count"] + summary["awarded_count"] + summary["not_awarded_count"] + summary["other_count"]
     )
 
     raw_total = owner_series.value_counts().rename_axis("owner").reset_index(name="raw_count")
@@ -924,11 +936,13 @@ def render_owner_section(df: pd.DataFrame) -> None:
         submitted_only_count = int(row["submitted_only_count"])
         awarded_count = int(row["awarded_count"])
         not_awarded_count = int(row["not_awarded_count"])
+        other_count = int(row["other_count"])
 
-        stack_total = max(submitted_only_count + awarded_count + not_awarded_count, 1)
+        stack_total = max(submitted_only_count + awarded_count + not_awarded_count + other_count, 1)
         submitted_width = submitted_only_count / stack_total * 100
         awarded_width = awarded_count / stack_total * 100
         not_awarded_width = not_awarded_count / stack_total * 100
+        other_width = other_count / stack_total * 100
 
         cards_html.append(
             dedent(
@@ -948,11 +962,13 @@ def render_owner_section(df: pd.DataFrame) -> None:
                         <div class="owner-stack-segment owner-submitted" style="width:{submitted_width:.1f}%"></div>
                         <div class="owner-stack-segment owner-awarded-segment" style="width:{awarded_width:.1f}%"></div>
                         <div class="owner-stack-segment owner-not-awarded" style="width:{not_awarded_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-other" style="width:{other_width:.1f}%"></div>
                     </div>
                     <div class="owner-legend">
                         <span><i class="legend-dot owner-submitted"></i>제출완료 {submitted_only_count}</span>
                         <span><i class="legend-dot owner-awarded-segment"></i>수주 {awarded_count}</span>
                         <span><i class="legend-dot owner-not-awarded"></i>미수주 {not_awarded_count}</span>
+                        <span><i class="legend-dot owner-other"></i>기타 {other_count}</span>
                     </div>
                 </div>
                 """
@@ -1051,11 +1067,13 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
         submitted_only_count = int(row["submitted_only_count"])
         awarded_count = int(row["awarded_count"])
         not_awarded_count = int(row["not_awarded_count"])
+        other_count = int(row["other_count"])
 
-        stack_total = max(submitted_only_count + awarded_count + not_awarded_count, 1)
+        stack_total = max(submitted_only_count + awarded_count + not_awarded_count + other_count, 1)
         submitted_width = submitted_only_count / stack_total * 100
         awarded_width = awarded_count / stack_total * 100
         not_awarded_width = not_awarded_count / stack_total * 100
+        other_width = other_count / stack_total * 100
 
         panel_html.append(
             dedent(
@@ -1072,11 +1090,13 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
                         <div class="owner-stack-segment owner-submitted" style="width:{submitted_width:.1f}%"></div>
                         <div class="owner-stack-segment owner-awarded-segment" style="width:{awarded_width:.1f}%"></div>
                         <div class="owner-stack-segment owner-not-awarded" style="width:{not_awarded_width:.1f}%"></div>
+                        <div class="owner-stack-segment owner-other" style="width:{other_width:.1f}%"></div>
                     </div>
                     <div class="compact-owner-meta">
                         <span>제출완료 {submitted_only_count}</span>
                         <span>수주 {awarded_count}</span>
                         <span>미수주 {not_awarded_count}</span>
+                        <span>기타 {other_count}</span>
                     </div>
                 </div>
                 """
