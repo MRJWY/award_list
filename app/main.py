@@ -237,8 +237,8 @@ def inject_styles() -> None:
         }
 
         .panel-card {
-            padding: 1.15rem 1.2rem 1rem;
-            min-height: 360px;
+            padding: 1.1rem 1.15rem 0.95rem;
+            min-height: 340px;
         }
 
         .panel-title {
@@ -381,7 +381,7 @@ def inject_styles() -> None:
         .compact-owner-list {
             display: flex;
             flex-direction: column;
-            gap: 0.85rem;
+            gap: 0.65rem;
             margin-top: 0.15rem;
         }
 
@@ -389,7 +389,7 @@ def inject_styles() -> None:
             background: rgba(247, 249, 253, 0.9);
             border: 1px solid rgba(226, 232, 240, 0.95);
             border-radius: 18px;
-            padding: 0.85rem 0.9rem;
+            padding: 0.72rem 0.82rem;
         }
 
         .compact-owner-head {
@@ -423,7 +423,7 @@ def inject_styles() -> None:
             display: flex;
             flex-wrap: wrap;
             gap: 0.45rem 0.8rem;
-            margin-top: 0.6rem;
+            margin-top: 0.45rem;
             color: var(--text-sub);
             font-size: 0.78rem;
             font-weight: 700;
@@ -788,13 +788,14 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
 
 
 def render_metric_row(summary: dict[str, int | float]) -> None:
-    total_cost_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
+    total_project_cost_eok = format_eok_from_kkrw(summary["awarded_total_project_cost_kkrw"])
+    government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
         ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "□", *CARD_STYLES[0]),
         ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "▶", *CARD_STYLES[1]),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *CARD_STYLES[2]),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *CARD_STYLES[3]),
-        ("정부지원금 합계", total_cost_eok, "억원", "정부지원금 합계", "₩", *CARD_STYLES[4]),
+        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "₩", *CARD_STYLES[4]),
     ]
 
     columns = st.columns(5)
@@ -1030,7 +1031,7 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
 def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
-    owner_summary = build_owner_summary(df).head(3)
+    owner_summary = build_owner_summary(df).head(2)
 
     panel_html = [
         """
@@ -1409,7 +1410,7 @@ def main() -> None:
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=8, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3)
+    top_columns = st.columns(3, gap="small")
     with top_columns[0]:
         render_rank_panel("상태별 건수", status_summary, "status_name")
     with top_columns[1]:
