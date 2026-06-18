@@ -1125,7 +1125,7 @@ def owner_stage_items(row: pd.Series) -> list[tuple[str, str, int]]:
     ]
 
 def render_owner_section(df: pd.DataFrame) -> None:
-    owner_summary = build_owner_summary(df).head(12)
+    owner_summary = build_owner_summary(df)
     st.markdown("#### 책임자 현황", unsafe_allow_html=False)
 
     if owner_summary.empty:
@@ -1253,7 +1253,7 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
     st.markdown("".join(mini_html), unsafe_allow_html=True)
 
 def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
-    owner_summary = build_owner_summary(df).head(2)
+    owner_summary = build_owner_summary(df)
 
     panel_html = [
         """

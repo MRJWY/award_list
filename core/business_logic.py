@@ -26,11 +26,11 @@ SUBMITTED_ONLY_STATUS_NAMES = {"제출 완료"}
 AWARDED_STATUS_CODES = {"AWARDED"}
 AWARDED_STATUS_NAMES = {"수주"}
 NOT_AWARDED_STATUS_CODES = {"NOT_AWARDED"}
-NOT_AWARDED_STATUS_NAMES = {"미수주"}
+NOT_AWARDED_STATUS_NAMES = {"미수주", "미선정"}
 SELECTION_WAIT_STATUS_CODES = {"SELECTION_WAIT"}
 SELECTION_WAIT_STATUS_NAMES = {"선정대기"}
 ANNOUNCEMENT_WAIT_STATUS_CODES = {"ANNOUNCEMENT_WAIT"}
-ANNOUNCEMENT_WAIT_STATUS_NAMES = {"발표대기"}
+ANNOUNCEMENT_WAIT_STATUS_NAMES = {"발표대기", "발표평가"}
 DOCUMENT_EVAL_STATUS_CODES = {"DOCUMENT_EVAL"}
 DOCUMENT_EVAL_STATUS_NAMES = {"서면평가"}
 
@@ -104,7 +104,7 @@ def status_stage_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
     )
     announcement_wait_mask = (
         status_code_series.isin(ANNOUNCEMENT_WAIT_STATUS_CODES)
-        | status_name_series.str.contains(r"발표\s*대기", regex=True, na=False)
+        | status_name_series.str.contains(r"발표\s*(대기|평가)", regex=True, na=False)
     )
     document_eval_mask = (
         status_code_series.isin(DOCUMENT_EVAL_STATUS_CODES)
