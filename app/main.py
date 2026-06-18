@@ -250,6 +250,9 @@ def inject_styles() -> None:
         .panel-card {
             padding: 1.1rem 1.15rem 0.95rem;
             min-height: 340px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .panel-title {
@@ -264,6 +267,8 @@ def inject_styles() -> None:
             flex-direction: column;
             gap: 1rem;
             margin-top: 1rem;
+            flex: 1;
+            justify-content: flex-start;
         }
 
         .bar-row {
@@ -401,6 +406,9 @@ def inject_styles() -> None:
             border: 1px solid rgba(226, 232, 240, 0.95);
             border-radius: 18px;
             padding: 0.72rem 0.82rem;
+            display: flex;
+            flex-direction: column;
+            min-height: 122px;
         }
 
         .compact-owner-head {
@@ -453,6 +461,9 @@ def inject_styles() -> None:
             border-radius: 22px;
             box-shadow: var(--shadow);
             padding: 1.1rem 1.15rem;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
         .owner-card-top {
@@ -543,6 +554,8 @@ def inject_styles() -> None:
             color: var(--text-sub);
             font-size: 0.82rem;
             font-weight: 700;
+            margin-top: auto;
+            padding-top: 0.85rem;
         }
 
         .owner-legend span {
@@ -587,6 +600,7 @@ def inject_styles() -> None:
             grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 0.9rem;
             margin-top: 0.9rem;
+            align-items: stretch;
         }
 
         .proposal-feed-card {
@@ -598,6 +612,7 @@ def inject_styles() -> None:
             display: flex;
             flex-direction: column;
             gap: 0.8rem;
+            height: 100%;
         }
 
         .proposal-feed-top {
@@ -605,6 +620,12 @@ def inject_styles() -> None:
             justify-content: space-between;
             align-items: start;
             gap: 0.8rem;
+            min-height: 4.8rem;
+        }
+
+        .proposal-feed-top > div {
+            flex: 1;
+            min-width: 0;
         }
 
         .proposal-feed-business {
@@ -622,6 +643,7 @@ def inject_styles() -> None:
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            min-height: 2.6em;
         }
 
         .proposal-feed-meta {
@@ -634,6 +656,7 @@ def inject_styles() -> None:
             background: #f7f9fd;
             border-radius: 16px;
             padding: 0.7rem 0.8rem;
+            min-height: 4.6rem;
         }
 
         .proposal-feed-meta-label {
@@ -658,6 +681,7 @@ def inject_styles() -> None:
             color: var(--text-sub);
             font-size: 0.8rem;
             font-weight: 700;
+            margin-top: auto;
         }
 
         .top-panel-row {
