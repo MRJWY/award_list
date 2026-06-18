@@ -17,6 +17,7 @@ from core.business_logic import (
     add_deadline_health_columns,
     aggregate_counts,
     filter_proposals,
+    status_stage_masks,
     submitted_proposal_mask,
     summarize_proposals,
 )
@@ -901,23 +902,13 @@ def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
         )
 
     owner_series = df["owner"].fillna("").astype(str).str.strip().replace("", "미입력")
-    status_code_series = df["status_code"].fillna("").astype(str).str.upper().str.strip()
-    status_name_series = df["status_name"].fillna("").astype(str).str.strip()
-    awarded_flag_series = df["awarded_yn"].fillna("").astype(str).str.upper().str.strip()
-
-    awarded_mask = status_code_series.eq("AWARDED") | status_name_series.eq("수주") | awarded_flag_series.eq("Y")
-    not_awarded_mask = status_code_series.eq("NOT_AWARDED") | status_name_series.eq("미수주")
-    selection_wait_mask = status_code_series.eq("SELECTION_WAIT") | status_name_series.str.contains(r"선정\s*대기", regex=True, na=False)
-    announcement_wait_mask = status_code_series.eq("ANNOUNCEMENT_WAIT") | status_name_series.str.contains(r"발표\s*대기", regex=True, na=False)
-    document_eval_mask = status_code_series.eq("DOCUMENT_EVAL") | status_name_series.str.contains(r"서면\s*평가", regex=True, na=False)
-    submitted_only_mask = (
-        (status_code_series.eq("SUBMITTED") | status_name_series.eq("제출 완료"))
-        & ~awarded_mask
-        & ~not_awarded_mask
-        & ~selection_wait_mask
-        & ~announcement_wait_mask
-        & ~document_eval_mask
-    )
+    stage_masks = status_stage_masks(df)
+    submitted_only_mask = stage_masks["submitted_only"]
+    awarded_mask = stage_masks["awarded"]
+    not_awarded_mask = stage_masks["not_awarded"]
+    selection_wait_mask = stage_masks["selection_wait"]
+    announcement_wait_mask = stage_masks["announcement_wait"]
+    document_eval_mask = stage_masks["document_eval"]
     other_mask = ~(
         submitted_only_mask
         | awarded_mask
@@ -1474,7 +1465,7 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.caption("수주율은 제출 완료, 수주, 미수주 상태를 제출 건으로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
+    st.caption("수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 제출 후 단계로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=8, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")

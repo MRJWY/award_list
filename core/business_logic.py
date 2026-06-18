@@ -5,28 +5,127 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 
-SUBMITTED_STATUS_CODES = {"SUBMITTED", "AWARDED", "NOT_AWARDED"}
-SUBMITTED_STATUS_NAMES = {"제출 완료", "수주", "미수주"}
+SUBMITTED_ONLY_STATUS_CODES = {"SUBMITTED"}
+SUBMITTED_ONLY_STATUS_NAMES = {"제출 완료"}
+AWARDED_STATUS_CODES = {"AWARDED"}
+AWARDED_STATUS_NAMES = {"수주"}
+NOT_AWARDED_STATUS_CODES = {"NOT_AWARDED"}
+NOT_AWARDED_STATUS_NAMES = {"미수주"}
+SELECTION_WAIT_STATUS_CODES = {"SELECTION_WAIT"}
+SELECTION_WAIT_STATUS_NAMES = {"선정대기"}
+ANNOUNCEMENT_WAIT_STATUS_CODES = {"ANNOUNCEMENT_WAIT"}
+ANNOUNCEMENT_WAIT_STATUS_NAMES = {"발표대기"}
+DOCUMENT_EVAL_STATUS_CODES = {"DOCUMENT_EVAL"}
+DOCUMENT_EVAL_STATUS_NAMES = {"서면평가"}
+
+SUBMITTED_STATUS_CODES = (
+    SUBMITTED_ONLY_STATUS_CODES
+    | AWARDED_STATUS_CODES
+    | NOT_AWARDED_STATUS_CODES
+    | SELECTION_WAIT_STATUS_CODES
+    | ANNOUNCEMENT_WAIT_STATUS_CODES
+    | DOCUMENT_EVAL_STATUS_CODES
+)
+SUBMITTED_STATUS_NAMES = (
+    SUBMITTED_ONLY_STATUS_NAMES
+    | AWARDED_STATUS_NAMES
+    | NOT_AWARDED_STATUS_NAMES
+    | SELECTION_WAIT_STATUS_NAMES
+    | ANNOUNCEMENT_WAIT_STATUS_NAMES
+    | DOCUMENT_EVAL_STATUS_NAMES
+)
+
+
+def status_stage_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
+    if df.empty:
+        empty_mask = pd.Series(dtype=bool)
+        return {
+            "submitted_only": empty_mask,
+            "awarded": empty_mask,
+            "not_awarded": empty_mask,
+            "selection_wait": empty_mask,
+            "announcement_wait": empty_mask,
+            "document_eval": empty_mask,
+            "submitted": empty_mask,
+            "closed": empty_mask,
+            "status_present": empty_mask,
+        }
+
+    status_code_series = (
+        df["status_code"].fillna("").astype(str).str.upper().str.strip()
+        if "status_code" in df.columns
+        else pd.Series("", index=df.index, dtype=str)
+    )
+    status_name_series = (
+        df["status_name"].fillna("").astype(str).str.strip()
+        if "status_name" in df.columns
+        else pd.Series("", index=df.index, dtype=str)
+    )
+    awarded_flag_series = (
+        df["awarded_yn"].fillna("").astype(str).str.upper().str.strip()
+        if "awarded_yn" in df.columns
+        else pd.Series("", index=df.index, dtype=str)
+    )
+
+    awarded_mask = (
+        status_code_series.isin(AWARDED_STATUS_CODES)
+        | status_name_series.isin(AWARDED_STATUS_NAMES)
+        | awarded_flag_series.eq("Y")
+    )
+    not_awarded_mask = status_code_series.isin(NOT_AWARDED_STATUS_CODES) | status_name_series.isin(NOT_AWARDED_STATUS_NAMES)
+    selection_wait_mask = (
+        status_code_series.isin(SELECTION_WAIT_STATUS_CODES)
+        | status_name_series.str.contains(r"선정\s*대기", regex=True, na=False)
+    )
+    announcement_wait_mask = (
+        status_code_series.isin(ANNOUNCEMENT_WAIT_STATUS_CODES)
+        | status_name_series.str.contains(r"발표\s*대기", regex=True, na=False)
+    )
+    document_eval_mask = (
+        status_code_series.isin(DOCUMENT_EVAL_STATUS_CODES)
+        | status_name_series.str.contains(r"서면\s*평가", regex=True, na=False)
+    )
+    submitted_only_mask = (
+        (status_code_series.isin(SUBMITTED_ONLY_STATUS_CODES) | status_name_series.isin(SUBMITTED_ONLY_STATUS_NAMES))
+        & ~awarded_mask
+        & ~not_awarded_mask
+        & ~selection_wait_mask
+        & ~announcement_wait_mask
+        & ~document_eval_mask
+    )
+    submitted_mask = (
+        submitted_only_mask
+        | awarded_mask
+        | not_awarded_mask
+        | selection_wait_mask
+        | announcement_wait_mask
+        | document_eval_mask
+    )
+    closed_mask = awarded_mask | not_awarded_mask
+    status_present_mask = status_code_series.ne("") | status_name_series.ne("")
+
+    return {
+        "submitted_only": submitted_only_mask,
+        "awarded": awarded_mask,
+        "not_awarded": not_awarded_mask,
+        "selection_wait": selection_wait_mask,
+        "announcement_wait": announcement_wait_mask,
+        "document_eval": document_eval_mask,
+        "submitted": submitted_mask,
+        "closed": closed_mask,
+        "status_present": status_present_mask,
+    }
 
 
 def submitted_proposal_mask(df: pd.DataFrame) -> pd.Series:
-    if df.empty:
-        return pd.Series(dtype=bool)
-
-    mask = pd.Series(False, index=df.index)
-    if "status_code" in df.columns:
-        mask = mask | df["status_code"].fillna("").astype(str).str.upper().isin(SUBMITTED_STATUS_CODES)
-    if "status_name" in df.columns:
-        mask = mask | df["status_name"].fillna("").astype(str).str.strip().isin(SUBMITTED_STATUS_NAMES)
-    return mask
+    return status_stage_masks(df)["submitted"]
 
 
 def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
-    submitted_mask = submitted_proposal_mask(df)
+    stage_masks = status_stage_masks(df)
+    submitted_mask = stage_masks["submitted"]
     submitted_count = int(submitted_mask.sum()) if len(submitted_mask) else 0
-    awarded_mask = (
-        df["awarded_yn"].astype(str).str.upper().eq("Y") if "awarded_yn" in df.columns else pd.Series(dtype=bool)
-    )
+    awarded_mask = stage_masks["awarded"]
     awarded_count = int(awarded_mask.sum()) if len(awarded_mask) else 0
     awarded_total_project_cost = (
         float(df.loc[awarded_mask, "total_project_cost_kkrw"].fillna(0).sum())
@@ -48,9 +147,9 @@ def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
         if len(awarded_mask) and "private_in_kind_kkrw" in df.columns
         else 0.0
     )
-    open_pipeline_count = int(
-        df["status_name"].fillna("").astype(str).str.strip().str.len().gt(0).sum() - awarded_count
-    ) if "status_name" in df.columns else max(int(len(df)) - awarded_count, 0)
+    status_present_mask = stage_masks["status_present"]
+    closed_mask = stage_masks["closed"]
+    open_pipeline_count = int((status_present_mask & ~closed_mask).sum()) if len(status_present_mask) else 0
     open_pipeline_count = max(open_pipeline_count, 0)
     win_rate = (awarded_count / submitted_count * 100) if submitted_count else 0.0
 
