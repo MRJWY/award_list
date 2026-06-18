@@ -231,8 +231,19 @@ def inject_styles() -> None:
             align-items: center;
             justify-content: center;
             color: #fff;
-            font-size: var(--text-xl);
             box-shadow: var(--shadow-lg);
+        }
+
+        .hero-icon svg,
+        .metric-icon svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vector-effect: non-scaling-stroke;
         }
 
         .hero-title {
@@ -340,7 +351,6 @@ def inject_styles() -> None:
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: var(--text-lg);
             font-weight: 700;
         }
 
@@ -920,6 +930,59 @@ def source_badge(source: str) -> str:
     return f"<span class='source-badge'>데이터 소스 · {html.escape(label_map.get(source, source))}</span>"
 
 
+def dashboard_icon_svg() -> str:
+    return """
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4.5" y="4.5" width="15" height="15" rx="2.5"></rect>
+        <path d="M9 8.5v7"></path>
+        <path d="M12 8.5v7"></path>
+        <path d="M15 8.5v7"></path>
+    </svg>
+    """
+
+
+def metric_icon_svg(name: str) -> str:
+    icons = {
+        "total": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="6.5" y="6.5" width="11" height="11" rx="1.5"></rect>
+        </svg>
+        """,
+        "submitted": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 6.5v11"></path>
+            <path d="M7 12h10"></path>
+            <path d="M13 8l4 4-4 4"></path>
+        </svg>
+        """,
+        "awarded": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8.5 7.5h7"></path>
+            <path d="M12 7.5v9"></path>
+            <path d="M7.5 11.5h9"></path>
+            <path d="M8 16.5l-1.5 2"></path>
+            <path d="M16 16.5l1.5 2"></path>
+        </svg>
+        """,
+        "win_rate": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="7"></circle>
+            <path d="M12 12V5"></path>
+            <path d="M12 12h5"></path>
+        </svg>
+        """,
+        "budget": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 7.5h5"></path>
+            <path d="M8.5 11.5h6"></path>
+            <path d="M9 16.5h5"></path>
+            <path d="M12 6v12"></path>
+        </svg>
+        """,
+    }
+    return icons.get(name, icons["total"])
+
+
 def format_count(value: int | float) -> str:
     return f"{int(value):,}"
 
@@ -941,7 +1004,7 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             f"""
         <div class="hero-card">
             <div class="hero-title-wrap">
-                <div class="hero-icon">▣</div>
+                <div class="hero-icon">{dashboard_icon_svg()}</div>
                 <div>
                     <h1 class="hero-title">사업 제안 현황 대시보드</h1>
                     <p class="hero-subtitle">Google Sheet 입력 데이터를 기준으로 제안 현황, 수주율, 마감 리스크를 한눈에 확인합니다.</p>
@@ -963,7 +1026,7 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
     return f"""
     <div class="metric-card">
         <div class="metric-top">
-            <div class="metric-icon" style="background:{tint}; color:{accent};">{icon}</div>
+            <div class="metric-icon" style="background:{tint}; color:{accent};">{metric_icon_svg(icon)}</div>
             <div class="metric-label">{html.escape(title)}</div>
         </div>
         <div>
@@ -980,11 +1043,11 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     total_project_cost_eok = format_eok_from_kkrw(summary["awarded_total_project_cost_kkrw"])
     government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
-        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "□", *METRIC_CARD_STYLE),
-        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "▶", *METRIC_CARD_STYLE),
-        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "⌘", *METRIC_CARD_STYLE),
-        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "◔", *METRIC_CARD_STYLE),
-        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "₩", *METRIC_CARD_STYLE),
+        ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "total", *METRIC_CARD_STYLE),
+        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "submitted", *METRIC_CARD_STYLE),
+        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "awarded", *METRIC_CARD_STYLE),
+        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "win_rate", *METRIC_CARD_STYLE),
+        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
     columns = st.columns(5)
