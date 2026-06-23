@@ -34,6 +34,7 @@ from integrations.google_sheets import (
 
 DISPLAY_LABELS = {
     **PROPOSAL_MASTER_COLUMN_LABELS,
+    "proposal_year": "연도",
     "days_to_deadline": "D-Day",
     "deadline_bucket": "마감 구간",
 }
@@ -65,6 +66,9 @@ def load_dashboard_data() -> tuple[pd.DataFrame, str, str, dict[str, object]]:
     load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
+    normalized["proposal_year"] = normalized["submission_deadline"].apply(
+        lambda value: str(pd.Timestamp(value).year) if pd.notna(value) else "미정"
+    )
     diagnostics = build_google_sheet_diagnostics(settings)
     return normalized, load_result.source, load_result.message, diagnostics
 
@@ -1056,22 +1060,35 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
 
-def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], str]:
+def year_sort_key(value: str) -> tuple[int, int | str]:
+    normalized = str(value).strip()
+    if normalized.isdigit():
+        return (0, -int(normalized))
+    return (1, normalized)
+
+
+def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
-    filter_columns = st.columns([1.05, 1.05, 1.05, 1.45, 0.45], vertical_alignment="bottom")
+    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.35, 0.45], vertical_alignment="bottom")
+    year_options = sorted(
+        [value for value in proposal_df["proposal_year"].dropna().unique() if str(value).strip()],
+        key=year_sort_key,
+    )
     product_options = sorted([value for value in proposal_df["product_code"].dropna().unique() if str(value).strip()])
     status_options = sort_status_values([value for value in proposal_df["status_name"].dropna().unique() if str(value).strip()])
     ministry_options = sorted([value for value in proposal_df["ministry"].dropna().unique() if str(value).strip()])
 
-    selected_products = filter_columns[0].multiselect("제품코드", product_options, placeholder="전체")
-    selected_statuses = filter_columns[1].multiselect("상태", status_options, placeholder="전체")
-    selected_ministries = filter_columns[2].multiselect("부처", ministry_options, placeholder="전체")
-    keyword = filter_columns[3].text_input("검색어", placeholder="사업명, 과제명, 기관, 주제...")
-    filter_columns[4].markdown('<div class="filter-button-spacer"></div>', unsafe_allow_html=True)
-    if filter_columns[4].button("새로고침", use_container_width=True):
+    selected_years = filter_columns[0].multiselect("연도", year_options, placeholder="전체")
+    selected_products = filter_columns[1].multiselect("제품코드", product_options, placeholder="전체")
+    selected_statuses = filter_columns[2].multiselect("상태", status_options, placeholder="전체")
+    selected_ministries = filter_columns[3].multiselect("부처", ministry_options, placeholder="전체")
+    keyword = filter_columns[4].text_input("검색어", placeholder="사업명, 과제명, 기관, 주제...")
+    filter_columns[5].markdown('<div class="filter-button-spacer"></div>', unsafe_allow_html=True)
+    if filter_columns[5].button("새로고침", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    return selected_products, selected_statuses, selected_ministries, keyword
+    st.caption("연도 필터는 제출마감일 기준이며, 마감일이 없는 건은 `미정`으로 표시됩니다.")
+    return selected_years, selected_products, selected_statuses, selected_ministries, keyword
 
 def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -> None:
     if summary_df.empty:
@@ -1625,6 +1642,7 @@ def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
 def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
     export_columns = [
         "proposal_id",
+        "proposal_year",
         "business_name",
         "project_name",
         "product_code",
@@ -1697,9 +1715,10 @@ def main() -> None:
         st.warning("아직 제안 데이터가 없습니다. Google Sheet에 데이터를 입력한 뒤 다시 확인해 주세요.")
         return
 
-    selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
+    selected_years, selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
     filtered_df = filter_proposals(
         proposal_df,
+        years=selected_years,
         products=selected_products,
         statuses=selected_statuses,
         ministries=selected_ministries,

@@ -207,6 +207,7 @@ def proposals_due_within_days(df: pd.DataFrame, days: int, today: datetime | Non
 def filter_proposals(
     df: pd.DataFrame,
     *,
+    years: list[str] | None = None,
     products: list[str] | None = None,
     statuses: list[str] | None = None,
     ministries: list[str] | None = None,
@@ -214,6 +215,8 @@ def filter_proposals(
 ) -> pd.DataFrame:
     filtered = df.copy()
 
+    if years and "proposal_year" in filtered.columns:
+        filtered = filtered[filtered["proposal_year"].isin(years)]
     if products:
         filtered = filtered[filtered["product_code"].isin(products)]
     if statuses:
