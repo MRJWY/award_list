@@ -1000,11 +1000,33 @@ def metric_icon_svg(name: str) -> str:
             <rect x="6.5" y="6.5" width="11" height="11" rx="1.5"></rect>
         </svg>
         """,
+        "preparation": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 7.5h8"></path>
+            <path d="M8 12h8"></path>
+            <path d="M8 16.5h5"></path>
+            <path d="M6.5 5.5h11v13h-11z"></path>
+        </svg>
+        """,
         "submitted": """
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 6.5v11"></path>
             <path d="M7 12h10"></path>
             <path d="M13 8l4 4-4 4"></path>
+        </svg>
+        """,
+        "selection_wait": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M8 8.5h8"></path>
+            <path d="M8 12h8"></path>
+            <path d="M12 5.5v13"></path>
+        </svg>
+        """,
+        "announcement_wait": """
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="6.5"></circle>
+            <path d="M12 8.5v4"></path>
+            <path d="M12 12.5h3.5"></path>
         </svg>
         """,
         "awarded": """
@@ -1096,9 +1118,9 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
         ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "total", *METRIC_CARD_STYLE),
-        ("제출 완료 수", format_count(summary["submitted_only_count"]), "건", "상태가 제출 완료인 건수", "submitted", *METRIC_CARD_STYLE),
-        ("제출 후 단계 수", format_count(summary["submitted_count"]), "건", "제출 완료 포함 후속 단계 건수", "submitted", *METRIC_CARD_STYLE),
-        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "awarded", *METRIC_CARD_STYLE),
+        ("제안 준비 건수", format_count(summary["proposal_preparation_count"]), "건", "제출 전 단계 건수", "preparation", *METRIC_CARD_STYLE),
+        ("발표대기 건수", format_count(summary["announcement_wait_count"]), "건", "발표대기/발표평가 건수", "announcement_wait", *METRIC_CARD_STYLE),
+        ("선정대기 건수", format_count(summary["selection_wait_count"]), "건", "선정 결과 대기 건수", "selection_wait", *METRIC_CARD_STYLE),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출 후 단계)", "win_rate", *METRIC_CARD_STYLE),
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
