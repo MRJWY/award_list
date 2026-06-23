@@ -279,7 +279,36 @@ def inject_styles() -> None:
             padding: var(--space-4) var(--space-4) var(--space-1);
         }
 
+        .stMultiSelect [data-testid="stWidgetLabel"],
+        .stTextInput [data-testid="stWidgetLabel"],
+        .stButton [data-testid="stWidgetLabel"] {
+            min-height: 1.5rem;
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .stMultiSelect [data-testid="stWidgetLabel"] p,
+        .stTextInput [data-testid="stWidgetLabel"] p,
+        .stButton [data-testid="stWidgetLabel"] p {
+            margin: 0;
+            color: var(--text-main);
+            font-size: var(--text-sm);
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
         .stMultiSelect [data-baseweb="select"] {
+            min-height: var(--control-md);
+            height: var(--control-md);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--grey-200);
+            box-shadow: none;
+            background: #fff;
+            transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
+        }
+
+        .stTextInput [data-baseweb="base-input"] {
             min-height: var(--control-md);
             border-radius: var(--radius-sm);
             border: 1px solid var(--grey-200);
@@ -289,13 +318,14 @@ def inject_styles() -> None:
         }
 
         .stTextInput input {
-            min-height: var(--control-md);
+            min-height: calc(var(--control-md) - 2px);
             border-radius: var(--radius-sm);
-            border: 1px solid var(--grey-200);
+            border: 0;
             box-shadow: none;
-            background: #fff;
+            background: transparent;
             color: var(--text-main);
             font-size: var(--text-sm);
+            padding: 0 var(--space-3);
             transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
         }
 
@@ -304,6 +334,7 @@ def inject_styles() -> None:
         }
 
         .stMultiSelect [data-baseweb="select"]:focus-within,
+        .stTextInput [data-baseweb="base-input"]:focus-within,
         .stTextInput input:focus {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(91, 91, 214, 0.12);
@@ -320,6 +351,11 @@ def inject_styles() -> None:
             padding: 0 var(--space-4);
             font-size: var(--text-sm);
             font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             transition:
                 background var(--motion-fast) var(--ease-standard),
                 border-color var(--motion-fast) var(--ease-standard),
@@ -336,7 +372,7 @@ def inject_styles() -> None:
 
         .metric-card {
             padding: var(--space-4);
-            height: 188px;
+            height: 196px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -344,8 +380,9 @@ def inject_styles() -> None:
 
         .metric-top {
             display: flex;
-            align-items: center;
+            align-items: flex-start;
             gap: var(--space-3);
+            min-height: 58px;
         }
 
         .metric-icon {
@@ -362,10 +399,21 @@ def inject_styles() -> None:
             color: var(--text-main);
             font-size: var(--text-md);
             font-weight: 700;
+            line-height: 1.4;
+            min-height: 2.8em;
+            display: flex;
+            align-items: center;
+        }
+
+        .metric-body {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+            min-height: 84px;
         }
 
         .metric-value {
-            margin: var(--space-3) 0 0;
+            margin: 0;
             color: var(--text-main);
             font-family: var(--font-display);
             font-size: var(--text-2xl);
@@ -385,7 +433,7 @@ def inject_styles() -> None:
             color: var(--text-sub);
             font-size: var(--text-sm);
             line-height: var(--line-normal);
-            min-height: 2.6em;
+            min-height: 2.8em;
         }
 
         .metric-caption-compact {
@@ -865,7 +913,7 @@ def inject_styles() -> None:
         }
 
         .filter-button-spacer {
-            height: 1.7rem;
+            height: 1.85rem;
         }
 
         .status-pill {
@@ -1033,7 +1081,7 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
             <div class="metric-icon" style="background:{tint}; color:{accent};">{metric_icon_svg(icon)}</div>
             <div class="metric-label">{html.escape(title)}</div>
         </div>
-        <div>
+        <div class="metric-body">
             <div class="metric-value" style="color:{accent};">
                 {html.escape(value)}<span class="metric-unit">{html.escape(unit)}</span>
             </div>
@@ -1069,7 +1117,7 @@ def year_sort_key(value: str) -> tuple[int, int | str]:
 
 def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
-    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.35, 0.45], vertical_alignment="bottom")
+    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.55], vertical_alignment="bottom")
     year_options = sorted(
         [value for value in proposal_df["proposal_year"].dropna().unique() if str(value).strip()],
         key=year_sort_key,
