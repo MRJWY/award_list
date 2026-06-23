@@ -1779,7 +1779,6 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
