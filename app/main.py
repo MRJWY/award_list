@@ -913,6 +913,18 @@ def inject_styles() -> None:
             margin-top: 0.8rem;
         }
 
+        .section-gap-filter-metrics {
+            height: 1.1rem;
+        }
+
+        .section-gap-metrics-panels {
+            height: 1.25rem;
+        }
+
+        .section-gap-panels-detail {
+            height: 1.1rem;
+        }
+
         .proposal-table {
             width: 100%;
             border-collapse: collapse;
@@ -1155,7 +1167,7 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
-    columns = st.columns(len(cards), gap="large")
+    columns = st.columns(len(cards), gap="medium")
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
@@ -1169,7 +1181,7 @@ def year_sort_key(value: str) -> tuple[int, int | str]:
 
 def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
-    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.6], gap="large", vertical_alignment="bottom")
+    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.6], gap="medium", vertical_alignment="bottom")
     year_options = sorted(
         [value for value in proposal_df["proposal_year"].dropna().unique() if str(value).strip()],
         key=year_sort_key,
@@ -1816,6 +1828,7 @@ def main() -> None:
         return
 
     selected_years, selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
+    st.markdown('<div class="section-gap-filter-metrics"></div>', unsafe_allow_html=True)
     filtered_df = filter_proposals(
         proposal_df,
         years=selected_years,
@@ -1831,10 +1844,11 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
+    st.markdown('<div class="section-gap-metrics-panels"></div>', unsafe_allow_html=True)
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3, gap="large")
+    top_columns = st.columns(3, gap="medium")
     with top_columns[0]:
         render_rank_panel("상태별 건수", status_summary, "status_name")
     with top_columns[1]:
@@ -1842,6 +1856,7 @@ def main() -> None:
     with top_columns[2]:
         render_owner_summary_panel(filtered_df)
 
+    st.markdown('<div class="section-gap-panels-detail"></div>', unsafe_allow_html=True)
     render_detail_section(filtered_df)
 
 if __name__ == "__main__":
