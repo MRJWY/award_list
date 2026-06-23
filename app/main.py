@@ -449,6 +449,11 @@ def inject_styles() -> None:
             flex-direction: column;
         }
 
+        .summary-panel-card {
+            min-height: 540px;
+            height: 540px;
+        }
+
         .panel-title {
             margin: 0 0 var(--space-4);
             color: var(--text-main);
@@ -464,6 +469,23 @@ def inject_styles() -> None:
             margin-top: 1rem;
             flex: 1;
             justify-content: flex-start;
+        }
+
+        .summary-panel-card .bar-list,
+        .summary-panel-card .compact-owner-list {
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+
+        .summary-panel-card .bar-list::-webkit-scrollbar,
+        .summary-panel-card .compact-owner-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .summary-panel-card .bar-list::-webkit-scrollbar-thumb,
+        .summary-panel-card .compact-owner-list::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.45);
+            border-radius: 999px;
         }
 
         .bar-row {
@@ -1125,7 +1147,7 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
-    columns = st.columns(len(cards))
+    columns = st.columns(len(cards), gap="medium")
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
@@ -1165,7 +1187,7 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
         st.markdown(
             dedent(
                 f"""
-            <div class="panel-card">
+            <div class="panel-card summary-panel-card">
                 <h3 class="panel-title">{html.escape(title)}</h3>
                 <div class="empty-state">표시할 데이터가 없습니다.</div>
             </div>
@@ -1176,7 +1198,7 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
         return
 
     max_count = max(int(summary_df["proposal_count"].max()), 1)
-    bar_html: list[str] = [f'<div class="panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
+    bar_html: list[str] = [f'<div class="panel-card summary-panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
     for index, row in summary_df.iterrows():
         label = str(row[label_column]).strip() or "미입력"
         count = int(row["proposal_count"])
@@ -1459,7 +1481,7 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
 
 def render_owner_summary_panel(df: pd.DataFrame) -> None:
     st.markdown(
-        '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
+        '<div class="panel-card summary-panel-card">' + build_compact_owner_panel_html(df) + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -1804,7 +1826,7 @@ def main() -> None:
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3, gap="small")
+    top_columns = st.columns(3, gap="medium")
     with top_columns[0]:
         render_rank_panel("상태별 건수", status_summary, "status_name")
     with top_columns[1]:
