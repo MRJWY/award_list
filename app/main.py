@@ -450,8 +450,9 @@ def inject_styles() -> None:
         }
 
         .summary-panel-card {
-            min-height: 540px;
-            height: 540px;
+            min-height: 520px;
+            height: 520px;
+            overflow: hidden;
         }
 
         .panel-title {
@@ -469,12 +470,14 @@ def inject_styles() -> None:
             margin-top: 1rem;
             flex: 1;
             justify-content: flex-start;
+            min-height: 0;
         }
 
         .summary-panel-card .bar-list,
         .summary-panel-card .compact-owner-list {
             overflow-y: auto;
             padding-right: 0.25rem;
+            min-height: 0;
         }
 
         .summary-panel-card .bar-list::-webkit-scrollbar,
@@ -604,6 +607,8 @@ def inject_styles() -> None:
         .split-panel-section {
             display: flex;
             flex-direction: column;
+            flex: 1;
+            min-height: 0;
         }
 
         .split-divider {
@@ -616,6 +621,7 @@ def inject_styles() -> None:
             flex-direction: column;
             gap: 0.65rem;
             margin-top: 0.15rem;
+            flex: 1;
         }
 
         .compact-owner-row {
@@ -625,7 +631,7 @@ def inject_styles() -> None:
             padding: var(--space-3);
             display: flex;
             flex-direction: column;
-            min-height: 122px;
+            min-height: 108px;
         }
 
         .compact-owner-head {
@@ -656,13 +662,15 @@ def inject_styles() -> None:
         }
 
         .compact-owner-meta {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.45rem 0.8rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
             margin-top: 0.45rem;
             color: var(--text-sub);
             font-size: 0.78rem;
             font-weight: 700;
+            line-height: 1.5;
         }
 
         .owner-grid {
@@ -902,7 +910,7 @@ def inject_styles() -> None:
         }
 
         .top-panel-row {
-            margin-top: 0.55rem;
+            margin-top: 0.8rem;
         }
 
         .proposal-table {
@@ -1147,7 +1155,7 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
-    columns = st.columns(len(cards), gap="medium")
+    columns = st.columns(len(cards), gap="large")
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
@@ -1161,7 +1169,7 @@ def year_sort_key(value: str) -> tuple[int, int | str]:
 
 def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
-    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.55], vertical_alignment="bottom")
+    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.6], gap="large", vertical_alignment="bottom")
     year_options = sorted(
         [value for value in proposal_df["proposal_year"].dropna().unique() if str(value).strip()],
         key=year_sort_key,
@@ -1826,7 +1834,7 @@ def main() -> None:
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3, gap="medium")
+    top_columns = st.columns(3, gap="large")
     with top_columns[0]:
         render_rank_panel("상태별 건수", status_summary, "status_name")
     with top_columns[1]:
