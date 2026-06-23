@@ -148,6 +148,8 @@ def submitted_proposal_mask(df: pd.DataFrame) -> pd.Series:
 
 def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
     stage_masks = status_stage_masks(df)
+    submitted_only_mask = stage_masks["submitted_only"]
+    submitted_only_count = int(submitted_only_mask.sum()) if len(submitted_only_mask) else 0
     submitted_mask = stage_masks["submitted"]
     submitted_count = int(submitted_mask.sum()) if len(submitted_mask) else 0
     awarded_mask = stage_masks["awarded"]
@@ -180,6 +182,7 @@ def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
 
     return {
         "total_proposals": int(len(df)),
+        "submitted_only_count": submitted_only_count,
         "submitted_count": submitted_count,
         "awarded_count": awarded_count,
         "awarded_total_project_cost_kkrw": awarded_total_project_cost,

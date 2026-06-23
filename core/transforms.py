@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+PLACEHOLDER_TEXT_VALUES = {"-", "--", "—", "–", "N/A", "n/a", "NA", "na", "없음"}
+
 
 PROPOSAL_MASTER_COLUMNS = [
     "proposal_id",
@@ -98,7 +100,10 @@ def proposal_master_label(column: str) -> str:
 def normalize_text(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
-    return str(value).strip()
+    normalized = str(value).strip()
+    if normalized in PLACEHOLDER_TEXT_VALUES:
+        return ""
+    return normalized
 
 
 def normalize_yn_flag(value: object) -> str:

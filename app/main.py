@@ -1044,13 +1044,14 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
         ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "total", *METRIC_CARD_STYLE),
-        ("제출 완료 수", format_count(summary["submitted_count"]), "건", "제출 완료 건수", "submitted", *METRIC_CARD_STYLE),
+        ("제출 완료 수", format_count(summary["submitted_only_count"]), "건", "상태가 제출 완료인 건수", "submitted", *METRIC_CARD_STYLE),
+        ("제출 후 단계 수", format_count(summary["submitted_count"]), "건", "제출 완료 포함 후속 단계 건수", "submitted", *METRIC_CARD_STYLE),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "awarded", *METRIC_CARD_STYLE),
-        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출)", "win_rate", *METRIC_CARD_STYLE),
+        ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출 후 단계)", "win_rate", *METRIC_CARD_STYLE),
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
-    columns = st.columns(5)
+    columns = st.columns(len(cards))
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
@@ -1711,7 +1712,7 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.caption("수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 제출 후 단계로 간주해 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
+    st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
