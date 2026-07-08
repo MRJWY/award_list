@@ -29,6 +29,7 @@ from integrations.google_sheets import (
     WorkbookLoadResult,
     build_google_sheet_diagnostics,
     load_live_or_cached_workbook_frames,
+    resolve_workbook_update_timestamp,
 )
 
 
@@ -60,13 +61,14 @@ OWNER_STAGE_SPECS = [
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data() -> tuple[pd.DataFrame, str, str, dict[str, object]]:
+def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object]]:
     settings = load_settings()
     load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
+    latest_update = resolve_workbook_update_timestamp(load_result.workbook_frames, settings, load_result.source)
     diagnostics = build_google_sheet_diagnostics(settings)
-    return normalized, load_result.source, load_result.message, diagnostics
+    return normalized, latest_update, load_result.source, load_result.message, diagnostics
 
 
 def render_connection_diagnostics(load_message: str, diagnostics: dict[str, object]) -> None:
@@ -827,6 +829,89 @@ def inject_styles() -> None:
             margin-top: auto;
         }
 
+        .proposal-detail-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-4);
+            margin-top: 1rem;
+        }
+
+        .proposal-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .proposal-detail-header > div {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .proposal-detail-business {
+            color: var(--text-sub);
+            font-size: 0.85rem;
+            font-weight: 800;
+            margin-bottom: 0.2rem;
+        }
+
+        .proposal-detail-project {
+            color: var(--text-main);
+            font-size: 1.1rem;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        .proposal-detail-grid,
+        .proposal-amount-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .proposal-detail-grid {
+            margin-bottom: 1rem;
+        }
+
+        .proposal-detail-item,
+        .proposal-amount-card,
+        .proposal-note-card {
+            background: var(--grey-50);
+            border: 1px solid var(--grey-200);
+            border-radius: var(--radius-sm);
+            padding: var(--space-3);
+        }
+
+        .proposal-detail-label,
+        .proposal-amount-label,
+        .proposal-note-label {
+            color: var(--text-sub);
+            font-size: 0.76rem;
+            font-weight: 700;
+            margin-bottom: 0.28rem;
+        }
+
+        .proposal-detail-value,
+        .proposal-amount-value,
+        .proposal-note-value {
+            color: var(--text-main);
+            font-size: 0.92rem;
+            font-weight: 800;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .proposal-amount-value {
+            font-size: 1rem;
+        }
+
+        .proposal-note-card {
+            margin-top: 0.75rem;
+        }
+
         .top-panel-row {
             margin-top: 0.55rem;
         }
@@ -992,6 +1077,19 @@ def format_eok_from_kkrw(value: int | float) -> str:
     return f"{amount_eok:,.2f}"
 
 
+def format_kkrw_amount(value: object) -> str:
+    if pd.isna(value) or value is None:
+        return "-"
+    amount = Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return f"{int(amount):,}천원"
+
+
+def format_kkrw_amount_with_eok(value: object) -> str:
+    if pd.isna(value) or value is None:
+        return "-"
+    return f"{format_kkrw_amount(value)} ({format_eok_from_kkrw(float(value))}억원)"
+
+
 def format_timestamp(value: object) -> str:
     if pd.isna(value) or value is None:
         return "-"
@@ -1011,7 +1109,7 @@ def render_hero(latest_sync: object, data_source: str) -> None:
                 </div>
             </div>
             <div class="hero-meta">
-                <div><strong>최종 업데이트:</strong> {html.escape(format_timestamp(latest_sync))}</div>
+                <div><strong>최종 동기화:</strong> {html.escape(format_timestamp(latest_sync))}</div>
                 <div>{source_badge(data_source)}</div>
             </div>
         </div>
@@ -1529,14 +1627,17 @@ def build_detail_table(df: pd.DataFrame) -> str:
         """
     )
 
-def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_detail_display_rows(df: pd.DataFrame) -> pd.DataFrame:
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
         table_df = table_df.assign(
             _status_rank=table_df["status_name"].fillna("").astype(str).map(status_sort_rank)
         ).sort_values(by=["_status_rank", "submission_deadline", "proposal_id"], ascending=[True, True, True], na_position="last")
         table_df = table_df.drop(columns=["_status_rank"])
+    return table_df.reset_index(drop=True)
 
+def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
+    table_df = prepare_detail_display_rows(df)
     display_df = pd.DataFrame(
         {
             "사업명": table_df["business_name"].fillna("").astype(str).str.strip().replace("", "-"),
@@ -1549,6 +1650,85 @@ def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
     return display_df.reset_index(drop=True)
+
+def build_selected_proposal_detail_html(row: pd.Series) -> str:
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+    awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
+    awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
+    notes_value = str(row.get("notes", "")).strip()
+    notes_html = (
+        f"""
+        <div class="proposal-note-card">
+            <div class="proposal-note-label">비고</div>
+            <div class="proposal-note-value">{html.escape(notes_value)}</div>
+        </div>
+        """
+        if notes_value
+        else ""
+    )
+
+    detail_items = [
+        ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
+        ("주제", str(row.get("topic", "")).strip() or "-"),
+        ("부처", str(row.get("ministry", "")).strip() or "-"),
+        ("기관", str(row.get("agency", "")).strip() or "-"),
+        ("담당자", str(row.get("owner", "")).strip() or "-"),
+        ("협력기관", str(row.get("partner", "")).strip() or "-"),
+        ("마감일", format_deadline(row.get("submission_deadline"))),
+        ("D-Day", f'<span class="d-day {d_day_class}">{html.escape(d_day_text)}</span>'),
+        ("수주여부", awarded_text),
+        ("최종수정", format_timestamp(row.get("last_updated_at"))),
+    ]
+
+    detail_grid_html = "".join(
+        f"""
+        <div class="proposal-detail-item">
+            <div class="proposal-detail-label">{html.escape(label)}</div>
+            <div class="proposal-detail-value">{value if label == "D-Day" else html.escape(value)}</div>
+        </div>
+        """
+        for label, value in detail_items
+    )
+
+    amount_items = [
+        ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
+        ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
+        ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
+        ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
+    ]
+    amount_grid_html = "".join(
+        f"""
+        <div class="proposal-amount-card">
+            <div class="proposal-amount-label">{html.escape(label)}</div>
+            <div class="proposal-amount-value">{html.escape(value)}</div>
+        </div>
+        """
+        for label, value in amount_items
+    )
+
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    return dedent(
+        f"""
+        <div class="proposal-detail-card">
+            <div class="proposal-detail-header">
+                <div>
+                    <div class="proposal-detail-business">{html.escape(business_name)}</div>
+                    <div class="proposal-detail-project">{html.escape(project_name)}</div>
+                </div>
+                <span class="status-pill {status_pill_class(status_name)}">{html.escape(status_name)}</span>
+            </div>
+            <div class="proposal-detail-grid">
+                {detail_grid_html}
+            </div>
+            <div class="proposal-amount-grid">
+                {amount_grid_html}
+            </div>
+            {notes_html}
+        </div>
+        """
+    )
 
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
@@ -1658,7 +1838,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">필터가 적용된 제안 중 최신 수정순 12건을 보여줍니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">행을 클릭하면 아래에서 주제와 개별 금액 상세를 확인할 수 있습니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
         """
         ),
         unsafe_allow_html=True,
@@ -1670,7 +1850,27 @@ def render_detail_section(df: pd.DataFrame) -> None:
         mime="text/csv",
         use_container_width=True,
     )
-    st.markdown(build_recent_proposal_feed_html(df), unsafe_allow_html=True)
+    detail_df = prepare_detail_display_rows(df)
+    display_df = build_detail_display_frame(detail_df)
+    table_height = min(max(len(display_df), 1) * 42 + 40, 520)
+    selection_event = st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="proposal_detail_table",
+        height=table_height,
+    )
+
+    selected_rows = selection_event["selection"]["rows"] if selection_event else []
+    selected_position = selected_rows[0] if selected_rows else 0
+    if selected_position >= len(detail_df):
+        selected_position = 0
+    selected_row = detail_df.iloc[selected_position]
+
+    st.markdown("#### 선택 과제 상세")
+    st.markdown(build_selected_proposal_detail_html(selected_row), unsafe_allow_html=True)
 
 
 def main() -> None:
@@ -1678,13 +1878,12 @@ def main() -> None:
     inject_styles()
 
     try:
-        proposal_df, data_source, load_message, diagnostics = load_dashboard_data()
+        proposal_df, latest_sync, data_source, load_message, diagnostics = load_dashboard_data()
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
         return
 
-    latest_sync = proposal_df["last_updated_at"].max() if "last_updated_at" in proposal_df.columns else pd.NaT
     render_hero(latest_sync, data_source)
 
     if data_source == "cache":
