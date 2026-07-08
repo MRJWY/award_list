@@ -29,12 +29,12 @@ from integrations.google_sheets import (
     WorkbookLoadResult,
     build_google_sheet_diagnostics,
     load_live_or_cached_workbook_frames,
+    resolve_workbook_update_timestamp,
 )
 
 
 DISPLAY_LABELS = {
     **PROPOSAL_MASTER_COLUMN_LABELS,
-    "proposal_year": "연도",
     "days_to_deadline": "D-Day",
     "deadline_bucket": "마감 구간",
 }
@@ -61,16 +61,14 @@ OWNER_STAGE_SPECS = [
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data() -> tuple[pd.DataFrame, str, str, dict[str, object]]:
+def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object]]:
     settings = load_settings()
     load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
-    normalized["proposal_year"] = normalized["submission_deadline"].apply(
-        lambda value: str(pd.Timestamp(value).year) if pd.notna(value) else "미정"
-    )
+    latest_update = resolve_workbook_update_timestamp(load_result.workbook_frames, settings, load_result.source)
     diagnostics = build_google_sheet_diagnostics(settings)
-    return normalized, load_result.source, load_result.message, diagnostics
+    return normalized, latest_update, load_result.source, load_result.message, diagnostics
 
 
 def render_connection_diagnostics(load_message: str, diagnostics: dict[str, object]) -> None:
@@ -279,36 +277,7 @@ def inject_styles() -> None:
             padding: var(--space-4) var(--space-4) var(--space-1);
         }
 
-        .stMultiSelect [data-testid="stWidgetLabel"],
-        .stTextInput [data-testid="stWidgetLabel"],
-        .stButton [data-testid="stWidgetLabel"] {
-            min-height: 1.5rem;
-            margin-bottom: 0.35rem;
-            display: flex;
-            align-items: flex-end;
-        }
-
-        .stMultiSelect [data-testid="stWidgetLabel"] p,
-        .stTextInput [data-testid="stWidgetLabel"] p,
-        .stButton [data-testid="stWidgetLabel"] p {
-            margin: 0;
-            color: var(--text-main);
-            font-size: var(--text-sm);
-            font-weight: 700;
-            line-height: 1.35;
-        }
-
         .stMultiSelect [data-baseweb="select"] {
-            min-height: var(--control-md);
-            height: var(--control-md);
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--grey-200);
-            box-shadow: none;
-            background: #fff;
-            transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
-        }
-
-        .stTextInput [data-baseweb="base-input"] {
             min-height: var(--control-md);
             border-radius: var(--radius-sm);
             border: 1px solid var(--grey-200);
@@ -318,14 +287,13 @@ def inject_styles() -> None:
         }
 
         .stTextInput input {
-            min-height: calc(var(--control-md) - 2px);
+            min-height: var(--control-md);
             border-radius: var(--radius-sm);
-            border: 0;
+            border: 1px solid var(--grey-200);
             box-shadow: none;
-            background: transparent;
+            background: #fff;
             color: var(--text-main);
             font-size: var(--text-sm);
-            padding: 0 var(--space-3);
             transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard);
         }
 
@@ -334,7 +302,6 @@ def inject_styles() -> None:
         }
 
         .stMultiSelect [data-baseweb="select"]:focus-within,
-        .stTextInput [data-baseweb="base-input"]:focus-within,
         .stTextInput input:focus {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(91, 91, 214, 0.12);
@@ -351,11 +318,6 @@ def inject_styles() -> None:
             padding: 0 var(--space-4);
             font-size: var(--text-sm);
             font-weight: 700;
-            line-height: 1;
-            white-space: nowrap;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             transition:
                 background var(--motion-fast) var(--ease-standard),
                 border-color var(--motion-fast) var(--ease-standard),
@@ -372,7 +334,7 @@ def inject_styles() -> None:
 
         .metric-card {
             padding: var(--space-4);
-            height: 196px;
+            height: 188px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -380,9 +342,8 @@ def inject_styles() -> None:
 
         .metric-top {
             display: flex;
-            align-items: flex-start;
+            align-items: center;
             gap: var(--space-3);
-            min-height: 58px;
         }
 
         .metric-icon {
@@ -399,21 +360,10 @@ def inject_styles() -> None:
             color: var(--text-main);
             font-size: var(--text-md);
             font-weight: 700;
-            line-height: 1.4;
-            min-height: 2.8em;
-            display: flex;
-            align-items: center;
-        }
-
-        .metric-body {
-            display: flex;
-            flex-direction: column;
-            gap: var(--space-2);
-            min-height: 84px;
         }
 
         .metric-value {
-            margin: 0;
+            margin: var(--space-3) 0 0;
             color: var(--text-main);
             font-family: var(--font-display);
             font-size: var(--text-2xl);
@@ -433,7 +383,7 @@ def inject_styles() -> None:
             color: var(--text-sub);
             font-size: var(--text-sm);
             line-height: var(--line-normal);
-            min-height: 2.8em;
+            min-height: 2.6em;
         }
 
         .metric-caption-compact {
@@ -447,12 +397,6 @@ def inject_styles() -> None:
             height: 100%;
             display: flex;
             flex-direction: column;
-        }
-
-        .summary-panel-card {
-            min-height: 520px;
-            height: 520px;
-            overflow: hidden;
         }
 
         .panel-title {
@@ -470,25 +414,6 @@ def inject_styles() -> None:
             margin-top: 1rem;
             flex: 1;
             justify-content: flex-start;
-            min-height: 0;
-        }
-
-        .summary-panel-card .bar-list,
-        .summary-panel-card .compact-owner-list {
-            overflow-y: auto;
-            padding-right: 0.25rem;
-            min-height: 0;
-        }
-
-        .summary-panel-card .bar-list::-webkit-scrollbar,
-        .summary-panel-card .compact-owner-list::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        .summary-panel-card .bar-list::-webkit-scrollbar-thumb,
-        .summary-panel-card .compact-owner-list::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, 0.45);
-            border-radius: 999px;
         }
 
         .bar-row {
@@ -607,8 +532,6 @@ def inject_styles() -> None:
         .split-panel-section {
             display: flex;
             flex-direction: column;
-            flex: 1;
-            min-height: 0;
         }
 
         .split-divider {
@@ -621,7 +544,6 @@ def inject_styles() -> None:
             flex-direction: column;
             gap: 0.65rem;
             margin-top: 0.15rem;
-            flex: 1;
         }
 
         .compact-owner-row {
@@ -631,7 +553,7 @@ def inject_styles() -> None:
             padding: var(--space-3);
             display: flex;
             flex-direction: column;
-            min-height: 108px;
+            min-height: 122px;
         }
 
         .compact-owner-head {
@@ -662,15 +584,13 @@ def inject_styles() -> None:
         }
 
         .compact-owner-meta {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.45rem 0.8rem;
             margin-top: 0.45rem;
             color: var(--text-sub);
             font-size: 0.78rem;
             font-weight: 700;
-            line-height: 1.5;
         }
 
         .owner-grid {
@@ -909,20 +829,91 @@ def inject_styles() -> None:
             margin-top: auto;
         }
 
+        .proposal-detail-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-md);
+            padding: var(--space-4);
+            margin-top: 1rem;
+        }
+
+        .proposal-detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .proposal-detail-header > div {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .proposal-detail-business {
+            color: var(--text-sub);
+            font-size: 0.85rem;
+            font-weight: 800;
+            margin-bottom: 0.2rem;
+        }
+
+        .proposal-detail-project {
+            color: var(--text-main);
+            font-size: 1.1rem;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        .proposal-detail-grid,
+        .proposal-amount-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .proposal-detail-grid {
+            margin-bottom: 1rem;
+        }
+
+        .proposal-detail-item,
+        .proposal-amount-card,
+        .proposal-note-card {
+            background: var(--grey-50);
+            border: 1px solid var(--grey-200);
+            border-radius: var(--radius-sm);
+            padding: var(--space-3);
+        }
+
+        .proposal-detail-label,
+        .proposal-amount-label,
+        .proposal-note-label {
+            color: var(--text-sub);
+            font-size: 0.76rem;
+            font-weight: 700;
+            margin-bottom: 0.28rem;
+        }
+
+        .proposal-detail-value,
+        .proposal-amount-value,
+        .proposal-note-value {
+            color: var(--text-main);
+            font-size: 0.92rem;
+            font-weight: 800;
+            line-height: 1.45;
+            word-break: break-word;
+        }
+
+        .proposal-amount-value {
+            font-size: 1rem;
+        }
+
+        .proposal-note-card {
+            margin-top: 0.75rem;
+        }
+
         .top-panel-row {
-            margin-top: 0.8rem;
-        }
-
-        .section-gap-filter-metrics {
-            height: 1.1rem;
-        }
-
-        .section-gap-metrics-panels {
-            height: 1.25rem;
-        }
-
-        .section-gap-panels-detail {
-            height: 1.1rem;
+            margin-top: 0.55rem;
         }
 
         .proposal-table {
@@ -955,7 +946,7 @@ def inject_styles() -> None:
         }
 
         .filter-button-spacer {
-            height: 1.85rem;
+            height: 1.7rem;
         }
 
         .status-pill {
@@ -1042,33 +1033,11 @@ def metric_icon_svg(name: str) -> str:
             <rect x="6.5" y="6.5" width="11" height="11" rx="1.5"></rect>
         </svg>
         """,
-        "preparation": """
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M8 7.5h8"></path>
-            <path d="M8 12h8"></path>
-            <path d="M8 16.5h5"></path>
-            <path d="M6.5 5.5h11v13h-11z"></path>
-        </svg>
-        """,
         "submitted": """
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M7 6.5v11"></path>
             <path d="M7 12h10"></path>
             <path d="M13 8l4 4-4 4"></path>
-        </svg>
-        """,
-        "selection_wait": """
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M8 8.5h8"></path>
-            <path d="M8 12h8"></path>
-            <path d="M12 5.5v13"></path>
-        </svg>
-        """,
-        "announcement_wait": """
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="6.5"></circle>
-            <path d="M12 8.5v4"></path>
-            <path d="M12 12.5h3.5"></path>
         </svg>
         """,
         "awarded": """
@@ -1108,6 +1077,19 @@ def format_eok_from_kkrw(value: int | float) -> str:
     return f"{amount_eok:,.2f}"
 
 
+def format_kkrw_amount(value: object) -> str:
+    if pd.isna(value) or value is None:
+        return "-"
+    amount = Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return f"{int(amount):,}천원"
+
+
+def format_kkrw_amount_with_eok(value: object) -> str:
+    if pd.isna(value) or value is None:
+        return "-"
+    return f"{format_kkrw_amount(value)} ({format_eok_from_kkrw(float(value))}억원)"
+
+
 def format_timestamp(value: object) -> str:
     if pd.isna(value) or value is None:
         return "-"
@@ -1127,7 +1109,7 @@ def render_hero(latest_sync: object, data_source: str) -> None:
                 </div>
             </div>
             <div class="hero-meta">
-                <div><strong>최종 업데이트:</strong> {html.escape(format_timestamp(latest_sync))}</div>
+                <div><strong>최종 동기화:</strong> {html.escape(format_timestamp(latest_sync))}</div>
                 <div>{source_badge(data_source)}</div>
             </div>
         </div>
@@ -1145,7 +1127,7 @@ def render_metric_card(title: str, value: str, unit: str, caption: str, icon: st
             <div class="metric-icon" style="background:{tint}; color:{accent};">{metric_icon_svg(icon)}</div>
             <div class="metric-label">{html.escape(title)}</div>
         </div>
-        <div class="metric-body">
+        <div>
             <div class="metric-value" style="color:{accent};">
                 {html.escape(value)}<span class="metric-unit">{html.escape(unit)}</span>
             </div>
@@ -1160,54 +1142,41 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
     government_funding_eok = format_eok_from_kkrw(summary["awarded_government_funding_kkrw"])
     cards = [
         ("총 제안 수", format_count(summary["total_proposals"]), "건", "전체 제안 건수", "total", *METRIC_CARD_STYLE),
-        ("제안 준비 건수", format_count(summary["proposal_preparation_count"]), "건", "제출 전 단계 건수", "preparation", *METRIC_CARD_STYLE),
-        ("발표대기 건수", format_count(summary["announcement_wait_count"]), "건", "발표대기/발표평가 건수", "announcement_wait", *METRIC_CARD_STYLE),
-        ("선정대기 건수", format_count(summary["selection_wait_count"]), "건", "선정 결과 대기 건수", "selection_wait", *METRIC_CARD_STYLE),
+        ("제출 완료 수", format_count(summary["submitted_only_count"]), "건", "상태가 제출 완료인 건수", "submitted", *METRIC_CARD_STYLE),
+        ("제출 후 단계 수", format_count(summary["submitted_count"]), "건", "제출 완료 포함 후속 단계 건수", "submitted", *METRIC_CARD_STYLE),
+        ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "awarded", *METRIC_CARD_STYLE),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출 후 단계)", "win_rate", *METRIC_CARD_STYLE),
         ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
     ]
 
-    columns = st.columns(len(cards), gap="medium")
+    columns = st.columns(len(cards))
     for column, card in zip(columns, cards):
         title, value, unit, caption, icon, accent, tint = card
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
 
-def year_sort_key(value: str) -> tuple[int, int | str]:
-    normalized = str(value).strip()
-    if normalized.isdigit():
-        return (0, -int(normalized))
-    return (1, normalized)
-
-
-def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], list[str], str]:
+def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], str]:
     st.markdown("#### 필터", unsafe_allow_html=False)
-    filter_columns = st.columns([0.9, 1.0, 1.0, 1.0, 1.4, 0.6], gap="medium", vertical_alignment="bottom")
-    year_options = sorted(
-        [value for value in proposal_df["proposal_year"].dropna().unique() if str(value).strip()],
-        key=year_sort_key,
-    )
+    filter_columns = st.columns([1.05, 1.05, 1.05, 1.45, 0.45], vertical_alignment="bottom")
     product_options = sorted([value for value in proposal_df["product_code"].dropna().unique() if str(value).strip()])
     status_options = sort_status_values([value for value in proposal_df["status_name"].dropna().unique() if str(value).strip()])
     ministry_options = sorted([value for value in proposal_df["ministry"].dropna().unique() if str(value).strip()])
 
-    selected_years = filter_columns[0].multiselect("연도", year_options, placeholder="전체")
-    selected_products = filter_columns[1].multiselect("제품코드", product_options, placeholder="전체")
-    selected_statuses = filter_columns[2].multiselect("상태", status_options, placeholder="전체")
-    selected_ministries = filter_columns[3].multiselect("부처", ministry_options, placeholder="전체")
-    keyword = filter_columns[4].text_input("검색어", placeholder="사업명, 과제명, 기관, 주제...")
-    filter_columns[5].markdown('<div class="filter-button-spacer"></div>', unsafe_allow_html=True)
-    if filter_columns[5].button("새로고침", use_container_width=True):
+    selected_products = filter_columns[0].multiselect("제품코드", product_options, placeholder="전체")
+    selected_statuses = filter_columns[1].multiselect("상태", status_options, placeholder="전체")
+    selected_ministries = filter_columns[2].multiselect("부처", ministry_options, placeholder="전체")
+    keyword = filter_columns[3].text_input("검색어", placeholder="사업명, 과제명, 기관, 주제...")
+    filter_columns[4].markdown('<div class="filter-button-spacer"></div>', unsafe_allow_html=True)
+    if filter_columns[4].button("새로고침", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
-    st.caption("연도 필터는 제출마감일 기준이며, 마감일이 없는 건은 `미정`으로 표시됩니다.")
-    return selected_years, selected_products, selected_statuses, selected_ministries, keyword
+    return selected_products, selected_statuses, selected_ministries, keyword
 
 def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -> None:
     if summary_df.empty:
         st.markdown(
             dedent(
                 f"""
-            <div class="panel-card summary-panel-card">
+            <div class="panel-card">
                 <h3 class="panel-title">{html.escape(title)}</h3>
                 <div class="empty-state">표시할 데이터가 없습니다.</div>
             </div>
@@ -1218,7 +1187,7 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
         return
 
     max_count = max(int(summary_df["proposal_count"].max()), 1)
-    bar_html: list[str] = [f'<div class="panel-card summary-panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
+    bar_html: list[str] = [f'<div class="panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
     for index, row in summary_df.iterrows():
         label = str(row[label_column]).strip() or "미입력"
         count = int(row["proposal_count"])
@@ -1501,7 +1470,7 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
 
 def render_owner_summary_panel(df: pd.DataFrame) -> None:
     st.markdown(
-        '<div class="panel-card summary-panel-card">' + build_compact_owner_panel_html(df) + "</div>",
+        '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -1658,14 +1627,17 @@ def build_detail_table(df: pd.DataFrame) -> str:
         """
     )
 
-def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
+def prepare_detail_display_rows(df: pd.DataFrame) -> pd.DataFrame:
     table_df = df.copy()
     if "submission_deadline" in table_df.columns:
         table_df = table_df.assign(
             _status_rank=table_df["status_name"].fillna("").astype(str).map(status_sort_rank)
         ).sort_values(by=["_status_rank", "submission_deadline", "proposal_id"], ascending=[True, True, True], na_position="last")
         table_df = table_df.drop(columns=["_status_rank"])
+    return table_df.reset_index(drop=True)
 
+def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
+    table_df = prepare_detail_display_rows(df)
     display_df = pd.DataFrame(
         {
             "사업명": table_df["business_name"].fillna("").astype(str).str.strip().replace("", "-"),
@@ -1678,6 +1650,85 @@ def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
         }
     )
     return display_df.reset_index(drop=True)
+
+def build_selected_proposal_detail_html(row: pd.Series) -> str:
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+    awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
+    awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
+    notes_value = str(row.get("notes", "")).strip()
+    notes_html = (
+        f"""
+        <div class="proposal-note-card">
+            <div class="proposal-note-label">비고</div>
+            <div class="proposal-note-value">{html.escape(notes_value)}</div>
+        </div>
+        """
+        if notes_value
+        else ""
+    )
+
+    detail_items = [
+        ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
+        ("주제", str(row.get("topic", "")).strip() or "-"),
+        ("부처", str(row.get("ministry", "")).strip() or "-"),
+        ("기관", str(row.get("agency", "")).strip() or "-"),
+        ("담당자", str(row.get("owner", "")).strip() or "-"),
+        ("협력기관", str(row.get("partner", "")).strip() or "-"),
+        ("마감일", format_deadline(row.get("submission_deadline"))),
+        ("D-Day", f'<span class="d-day {d_day_class}">{html.escape(d_day_text)}</span>'),
+        ("수주여부", awarded_text),
+        ("최종수정", format_timestamp(row.get("last_updated_at"))),
+    ]
+
+    detail_grid_html = "".join(
+        f"""
+        <div class="proposal-detail-item">
+            <div class="proposal-detail-label">{html.escape(label)}</div>
+            <div class="proposal-detail-value">{value if label == "D-Day" else html.escape(value)}</div>
+        </div>
+        """
+        for label, value in detail_items
+    )
+
+    amount_items = [
+        ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
+        ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
+        ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
+        ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
+    ]
+    amount_grid_html = "".join(
+        f"""
+        <div class="proposal-amount-card">
+            <div class="proposal-amount-label">{html.escape(label)}</div>
+            <div class="proposal-amount-value">{html.escape(value)}</div>
+        </div>
+        """
+        for label, value in amount_items
+    )
+
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    return dedent(
+        f"""
+        <div class="proposal-detail-card">
+            <div class="proposal-detail-header">
+                <div>
+                    <div class="proposal-detail-business">{html.escape(business_name)}</div>
+                    <div class="proposal-detail-project">{html.escape(project_name)}</div>
+                </div>
+                <span class="status-pill {status_pill_class(status_name)}">{html.escape(status_name)}</span>
+            </div>
+            <div class="proposal-detail-grid">
+                {detail_grid_html}
+            </div>
+            <div class="proposal-amount-grid">
+                {amount_grid_html}
+            </div>
+            {notes_html}
+        </div>
+        """
+    )
 
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
@@ -1754,7 +1805,6 @@ def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
 def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
     export_columns = [
         "proposal_id",
-        "proposal_year",
         "business_name",
         "project_name",
         "product_code",
@@ -1788,7 +1838,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">필터가 적용된 제안 중 최신 수정순 12건을 보여줍니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">행을 클릭하면 아래에서 주제와 개별 금액 상세를 확인할 수 있습니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
         """
         ),
         unsafe_allow_html=True,
@@ -1800,7 +1850,27 @@ def render_detail_section(df: pd.DataFrame) -> None:
         mime="text/csv",
         use_container_width=True,
     )
-    st.markdown(build_recent_proposal_feed_html(df), unsafe_allow_html=True)
+    detail_df = prepare_detail_display_rows(df)
+    display_df = build_detail_display_frame(detail_df)
+    table_height = min(max(len(display_df), 1) * 42 + 40, 520)
+    selection_event = st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        key="proposal_detail_table",
+        height=table_height,
+    )
+
+    selected_rows = selection_event["selection"]["rows"] if selection_event else []
+    selected_position = selected_rows[0] if selected_rows else 0
+    if selected_position >= len(detail_df):
+        selected_position = 0
+    selected_row = detail_df.iloc[selected_position]
+
+    st.markdown("#### 선택 과제 상세")
+    st.markdown(build_selected_proposal_detail_html(selected_row), unsafe_allow_html=True)
 
 
 def main() -> None:
@@ -1808,13 +1878,12 @@ def main() -> None:
     inject_styles()
 
     try:
-        proposal_df, data_source, load_message, diagnostics = load_dashboard_data()
+        proposal_df, latest_sync, data_source, load_message, diagnostics = load_dashboard_data()
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
         return
 
-    latest_sync = proposal_df["last_updated_at"].max() if "last_updated_at" in proposal_df.columns else pd.NaT
     render_hero(latest_sync, data_source)
 
     if data_source == "cache":
@@ -1827,11 +1896,9 @@ def main() -> None:
         st.warning("아직 제안 데이터가 없습니다. Google Sheet에 데이터를 입력한 뒤 다시 확인해 주세요.")
         return
 
-    selected_years, selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
-    st.markdown('<div class="section-gap-filter-metrics"></div>', unsafe_allow_html=True)
+    selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
     filtered_df = filter_proposals(
         proposal_df,
-        years=selected_years,
         products=selected_products,
         statuses=selected_statuses,
         ministries=selected_ministries,
@@ -1844,11 +1911,11 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.markdown('<div class="section-gap-metrics-panels"></div>', unsafe_allow_html=True)
+    st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
 
     status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
     product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3, gap="medium")
+    top_columns = st.columns(3, gap="small")
     with top_columns[0]:
         render_rank_panel("상태별 건수", status_summary, "status_name")
     with top_columns[1]:
@@ -1856,7 +1923,6 @@ def main() -> None:
     with top_columns[2]:
         render_owner_summary_panel(filtered_df)
 
-    st.markdown('<div class="section-gap-panels-detail"></div>', unsafe_allow_html=True)
     render_detail_section(filtered_df)
 
 if __name__ == "__main__":

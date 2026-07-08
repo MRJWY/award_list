@@ -154,10 +154,6 @@ def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
     submitted_count = int(submitted_mask.sum()) if len(submitted_mask) else 0
     awarded_mask = stage_masks["awarded"]
     awarded_count = int(awarded_mask.sum()) if len(awarded_mask) else 0
-    selection_wait_mask = stage_masks["selection_wait"]
-    selection_wait_count = int(selection_wait_mask.sum()) if len(selection_wait_mask) else 0
-    announcement_wait_mask = stage_masks["announcement_wait"]
-    announcement_wait_count = int(announcement_wait_mask.sum()) if len(announcement_wait_mask) else 0
     awarded_total_project_cost = (
         float(df.loc[awarded_mask, "total_project_cost_kkrw"].fillna(0).sum())
         if len(awarded_mask) and "total_project_cost_kkrw" in df.columns
@@ -180,19 +176,15 @@ def summarize_proposals(df: pd.DataFrame) -> dict[str, int | float]:
     )
     status_present_mask = stage_masks["status_present"]
     closed_mask = stage_masks["closed"]
-    proposal_preparation_count = int((status_present_mask & ~submitted_mask).sum()) if len(status_present_mask) else 0
     open_pipeline_count = int((status_present_mask & ~closed_mask).sum()) if len(status_present_mask) else 0
     open_pipeline_count = max(open_pipeline_count, 0)
     win_rate = (awarded_count / submitted_count * 100) if submitted_count else 0.0
 
     return {
         "total_proposals": int(len(df)),
-        "proposal_preparation_count": proposal_preparation_count,
         "submitted_only_count": submitted_only_count,
         "submitted_count": submitted_count,
         "awarded_count": awarded_count,
-        "selection_wait_count": selection_wait_count,
-        "announcement_wait_count": announcement_wait_count,
         "awarded_total_project_cost_kkrw": awarded_total_project_cost,
         "awarded_government_funding_kkrw": awarded_government_funding,
         "awarded_private_cash_kkrw": awarded_private_cash,
@@ -215,7 +207,6 @@ def proposals_due_within_days(df: pd.DataFrame, days: int, today: datetime | Non
 def filter_proposals(
     df: pd.DataFrame,
     *,
-    years: list[str] | None = None,
     products: list[str] | None = None,
     statuses: list[str] | None = None,
     ministries: list[str] | None = None,
@@ -223,8 +214,6 @@ def filter_proposals(
 ) -> pd.DataFrame:
     filtered = df.copy()
 
-    if years and "proposal_year" in filtered.columns:
-        filtered = filtered[filtered["proposal_year"].isin(years)]
     if products:
         filtered = filtered[filtered["product_code"].isin(products)]
     if statuses:
