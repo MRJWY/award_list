@@ -170,3 +170,37 @@ def load_live_or_cached_workbook_frames(settings: Settings) -> WorkbookLoadResul
         source="empty",
         message="Google Sheet is not configured and no cached CSV data was found.",
     )
+
+
+def resolve_workbook_update_timestamp(
+    workbook_frames: dict[str, pd.DataFrame],
+    settings: Settings,
+    source: str,
+) -> pd.Timestamp | None:
+    sync_log_name = settings.google_worksheet_sync_log
+    sync_log_df = workbook_frames.get(sync_log_name, pd.DataFrame())
+
+    if not sync_log_df.empty:
+        candidate_columns = [
+            "last_updated_at",
+            "updated_at",
+            "timestamp",
+            "synced_at",
+            "created_at",
+        ]
+        for column in candidate_columns:
+            if column in sync_log_df.columns:
+                timestamps = pd.to_datetime(sync_log_df[column], errors="coerce").dropna()
+                if not timestamps.empty:
+                    return pd.Timestamp(timestamps.max())
+
+    if source == "cache":
+        cache_timestamps: list[pd.Timestamp] = []
+        for worksheet_name in worksheet_names(settings):
+            csv_path = cache_path_for_worksheet(worksheet_name)
+            if csv_path.exists():
+                cache_timestamps.append(pd.Timestamp(csv_path.stat().st_mtime, unit="s"))
+        if cache_timestamps:
+            return max(cache_timestamps)
+
+    return None
