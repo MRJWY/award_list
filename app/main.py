@@ -1730,6 +1730,15 @@ def build_selected_proposal_detail_html(row: pd.Series) -> str:
         """
     )
 
+def build_proposal_expander_label(row: pd.Series) -> str:
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    deadline_text = format_deadline(row.get("submission_deadline"))
+    d_day_text, _ = format_d_day(row.get("days_to_deadline"))
+    owner_name = str(row.get("owner", "")).strip() or "-"
+    return f"{business_name} | {project_name} | {status_name} | {deadline_text} | {d_day_text} | {owner_name}"
+
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
         return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
@@ -1838,7 +1847,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">행을 클릭하면 아래에서 주제와 개별 금액 상세를 확인할 수 있습니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">과제 줄을 클릭해 펼치면 주제와 개별 금액 상세를 바로 확인할 수 있습니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
         """
         ),
         unsafe_allow_html=True,
@@ -1851,26 +1860,10 @@ def render_detail_section(df: pd.DataFrame) -> None:
         use_container_width=True,
     )
     detail_df = prepare_detail_display_rows(df)
-    display_df = build_detail_display_frame(detail_df)
-    table_height = min(max(len(display_df), 1) * 42 + 40, 520)
-    selection_event = st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        on_select="rerun",
-        selection_mode="single-row",
-        key="proposal_detail_table",
-        height=table_height,
-    )
-
-    selected_rows = selection_event["selection"]["rows"] if selection_event else []
-    selected_position = selected_rows[0] if selected_rows else 0
-    if selected_position >= len(detail_df):
-        selected_position = 0
-    selected_row = detail_df.iloc[selected_position]
-
-    st.markdown("#### 선택 과제 상세")
-    st.markdown(build_selected_proposal_detail_html(selected_row), unsafe_allow_html=True)
+    st.markdown("#### 과제 상세 펼쳐보기")
+    for row_index, (_, row) in enumerate(detail_df.iterrows()):
+        with st.expander(build_proposal_expander_label(row), expanded=row_index == 0):
+            st.markdown(build_selected_proposal_detail_html(row), unsafe_allow_html=True)
 
 
 def main() -> None:

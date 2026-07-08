@@ -9,3 +9,4 @@ data/exports/*
 !data/exports/.gitkeep
 logs/*
 !logs/.gitkeep
+award_list_repo/
