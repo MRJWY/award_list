@@ -1469,10 +1469,12 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
     return "".join(panel_html)
 
 def render_owner_summary_panel(df: pd.DataFrame) -> None:
-    st.markdown(
-        '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
-        unsafe_allow_html=True,
-    )
+    owner_container = st.container(height=420, border=False)
+    with owner_container:
+        st.markdown(
+            '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
+            unsafe_allow_html=True,
+        )
 
 def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFrame) -> None:
     counts = deadline_bucket_counts(deadline_df)
@@ -1774,6 +1776,61 @@ def render_proposal_summary_card(row: pd.Series, row_key: str) -> None:
         st.caption("주제")
         st.write(str(row.get("topic", "")).strip() or "-")
 
+
+def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    owner_name = str(row.get("owner", "")).strip() or "-"
+    ministry_name = str(row.get("ministry", "")).strip() or "-"
+    deadline_text = format_deadline(row.get("submission_deadline"))
+    topic_name = str(row.get("topic", "")).strip() or "-"
+
+    with st.container(border=True):
+        st.caption(business_name)
+        st.markdown(f"**{project_name}**")
+
+        top_cols = st.columns([0.58, 0.42], vertical_alignment="top")
+        with top_cols[0]:
+            st.caption("담당자")
+            st.write(owner_name)
+        with top_cols[1]:
+            st.caption("상태")
+            st.markdown(
+                f"<span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span>",
+                unsafe_allow_html=True,
+            )
+
+        mid_cols = st.columns(2, vertical_alignment="top")
+        with mid_cols[0]:
+            st.caption("마감일")
+            st.write(deadline_text)
+        with mid_cols[1]:
+            st.caption("D-Day")
+            st.markdown(
+                f"<span class='d-day {d_day_class}'>{html.escape(d_day_text)}</span>",
+                unsafe_allow_html=True,
+            )
+
+        bottom_cols = st.columns(2, vertical_alignment="top")
+        with bottom_cols[0]:
+            st.caption("부처")
+            st.write(ministry_name)
+        with bottom_cols[1]:
+            st.caption("주제")
+            st.write(topic_name)
+
+        is_open = st.session_state.get("expanded_proposal_key") == row_key
+        button_label = "접기" if is_open else "상세 보기"
+        if st.button(button_label, key=f"card_toggle_{row_key}", use_container_width=True):
+            st.session_state["expanded_proposal_key"] = None if is_open else row_key
+            st.rerun()
+
+        if is_open:
+            st.divider()
+            render_selected_proposal_detail(row)
+
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
         return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
@@ -1901,13 +1958,14 @@ def render_detail_section(df: pd.DataFrame) -> None:
     st.markdown("#### 과제 카드")
     detail_container = st.container(height=560, border=False)
     with detail_container:
+        card_columns: list = []
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
+            if row_index % 3 == 0:
+                card_columns = st.columns(3, gap="small")
+            card_column = card_columns[row_index % 3]
             row_key = proposal_row_key(row, row_index)
-            with st.container(border=True):
-                render_proposal_summary_card(row, row_key)
-                if st.session_state.get("expanded_proposal_key") == row_key:
-                    st.divider()
-                    render_selected_proposal_detail(row)
+            with card_column:
+                render_proposal_square_card(row, row_key)
 
 
 def main() -> None:
