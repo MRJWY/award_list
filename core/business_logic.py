@@ -92,11 +92,10 @@ def status_stage_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
         else pd.Series("", index=df.index, dtype=str)
     )
 
-    awarded_mask = (
-        status_code_series.isin(AWARDED_STATUS_CODES)
-        | status_name_series.isin(AWARDED_STATUS_NAMES)
-        | awarded_flag_series.eq("Y")
-    )
+    status_present_mask = status_code_series.ne("") | status_name_series.ne("")
+    awarded_by_status_mask = status_code_series.isin(AWARDED_STATUS_CODES) | status_name_series.isin(AWARDED_STATUS_NAMES)
+    awarded_by_flag_mask = awarded_flag_series.eq("Y") & ~status_present_mask
+    awarded_mask = awarded_by_status_mask | awarded_by_flag_mask
     not_awarded_mask = status_code_series.isin(NOT_AWARDED_STATUS_CODES) | status_name_series.isin(NOT_AWARDED_STATUS_NAMES)
     selection_wait_mask = (
         status_code_series.isin(SELECTION_WAIT_STATUS_CODES)
@@ -127,7 +126,6 @@ def status_stage_masks(df: pd.DataFrame) -> dict[str, pd.Series]:
         | document_eval_mask
     )
     closed_mask = awarded_mask | not_awarded_mask
-    status_present_mask = status_code_series.ne("") | status_name_series.ne("")
 
     return {
         "submitted_only": submitted_only_mask,

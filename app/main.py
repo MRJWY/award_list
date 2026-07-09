@@ -185,6 +185,7 @@ def inject_styles() -> None:
             --panel-border: var(--grey-200);
             --text-main: var(--grey-900);
             --text-sub: var(--grey-700);
+            --summary-panel-height: 420px;
         }
 
         .stApp {
@@ -401,6 +402,13 @@ def inject_styles() -> None:
             flex-direction: column;
         }
 
+        .summary-panel-card {
+            height: var(--summary-panel-height);
+            min-height: var(--summary-panel-height);
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
         .panel-title {
             margin: 0 0 var(--space-4);
             color: var(--text-main);
@@ -409,12 +417,20 @@ def inject_styles() -> None:
             line-height: var(--line-tight);
         }
 
+        .summary-panel-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 0.2rem;
+        }
+
         .bar-list {
             display: flex;
             flex-direction: column;
             gap: 1rem;
             margin-top: 1rem;
             flex: 1;
+            min-height: 0;
             justify-content: flex-start;
         }
 
@@ -546,6 +562,10 @@ def inject_styles() -> None:
             flex-direction: column;
             gap: 0.65rem;
             margin-top: 0.15rem;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 0.2rem;
         }
 
         .compact-owner-row {
@@ -1180,10 +1200,10 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
             st.markdown(
                 dedent(
                     f"""
-                <div class="panel-card">
-                    <h3 class="panel-title">{html.escape(title)}</h3>
-                    <div class="empty-state">표시할 데이터가 없습니다.</div>
-                </div>
+                    <div class="panel-card summary-panel-card">
+                        <h3 class="panel-title">{html.escape(title)}</h3>
+                        <div class="empty-state">표시할 데이터가 없습니다.</div>
+                    </div>
                 """
                 ),
                 unsafe_allow_html=True,
@@ -1191,7 +1211,7 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
             return
 
         max_count = max(int(summary_df["proposal_count"].max()), 1)
-        bar_html: list[str] = [f'<div class="panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
+        bar_html: list[str] = [f'<div class="panel-card summary-panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="summary-panel-scroll"><div class="bar-list">']
         for index, row in summary_df.iterrows():
             label = str(row[label_column]).strip() or "미입력"
             count = int(row["proposal_count"])
@@ -1210,7 +1230,7 @@ def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -
                 """
                 )
             )
-        bar_html.append("</div></div>")
+        bar_html.append("</div></div></div>")
         st.markdown("".join(bar_html), unsafe_allow_html=True)
 
 def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
@@ -1432,7 +1452,7 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
         panel_html.append('<div class="empty-state">표시할 책임자 데이터가 없습니다.</div></div>')
         return "".join(panel_html)
 
-    panel_html.append('<div class="compact-owner-list">')
+    panel_html.append('<div class="summary-panel-scroll compact-owner-list">')
     for _, row in owner_summary.iterrows():
         owner_name = str(row["owner"]).strip() or "미입력"
         proposal_count = int(row["proposal_count"])
@@ -1476,7 +1496,7 @@ def render_owner_summary_panel(df: pd.DataFrame) -> None:
     owner_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=False)
     with owner_container:
         st.markdown(
-            '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
+            '<div class="panel-card summary-panel-card">' + build_compact_owner_panel_html(df) + "</div>",
             unsafe_allow_html=True,
         )
 
@@ -1956,8 +1976,8 @@ def render_detail_section(df: pd.DataFrame) -> None:
         use_container_width=True,
     )
     detail_df = prepare_detail_display_rows(df)
-    if "expanded_proposal_key" not in st.session_state and not detail_df.empty:
-        st.session_state["expanded_proposal_key"] = proposal_row_key(detail_df.iloc[0], 0)
+    if "expanded_proposal_key" not in st.session_state:
+        st.session_state["expanded_proposal_key"] = None
 
     st.markdown("#### 과제 카드")
     detail_container = st.container(height=560, border=False)
