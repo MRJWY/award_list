@@ -59,6 +59,8 @@ OWNER_STAGE_SPECS = [
     ("other_count", "기타", "owner-other"),
 ]
 
+TOP_SUMMARY_PANEL_HEIGHT = 420
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object]]:
@@ -1172,42 +1174,44 @@ def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], 
     return selected_products, selected_statuses, selected_ministries, keyword
 
 def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -> None:
-    if summary_df.empty:
-        st.markdown(
-            dedent(
-                f"""
-            <div class="panel-card">
-                <h3 class="panel-title">{html.escape(title)}</h3>
-                <div class="empty-state">표시할 데이터가 없습니다.</div>
-            </div>
-            """
-            ),
-            unsafe_allow_html=True,
-        )
-        return
-
-    max_count = max(int(summary_df["proposal_count"].max()), 1)
-    bar_html: list[str] = [f'<div class="panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
-    for index, row in summary_df.iterrows():
-        label = str(row[label_column]).strip() or "미입력"
-        count = int(row["proposal_count"])
-        accent, _ = CARD_STYLES[index % len(CARD_STYLES)]
-        width = max(count / max_count * 100, 8)
-        bar_html.append(
-            dedent(
-                f"""
-            <div class="bar-row">
-                <div class="bar-label">{html.escape(label)}</div>
-                <div class="bar-track">
-                    <div class="bar-fill" style="width:{width:.1f}%; background:{accent};"></div>
+    panel_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=False)
+    with panel_container:
+        if summary_df.empty:
+            st.markdown(
+                dedent(
+                    f"""
+                <div class="panel-card">
+                    <h3 class="panel-title">{html.escape(title)}</h3>
+                    <div class="empty-state">표시할 데이터가 없습니다.</div>
                 </div>
-                <div class="bar-value">{count}</div>
-            </div>
-            """
+                """
+                ),
+                unsafe_allow_html=True,
             )
-        )
-    bar_html.append("</div></div>")
-    st.markdown("".join(bar_html), unsafe_allow_html=True)
+            return
+
+        max_count = max(int(summary_df["proposal_count"].max()), 1)
+        bar_html: list[str] = [f'<div class="panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="bar-list">']
+        for index, row in summary_df.iterrows():
+            label = str(row[label_column]).strip() or "미입력"
+            count = int(row["proposal_count"])
+            accent, _ = CARD_STYLES[index % len(CARD_STYLES)]
+            width = max(count / max_count * 100, 8)
+            bar_html.append(
+                dedent(
+                    f"""
+                <div class="bar-row">
+                    <div class="bar-label">{html.escape(label)}</div>
+                    <div class="bar-track">
+                        <div class="bar-fill" style="width:{width:.1f}%; background:{accent};"></div>
+                    </div>
+                    <div class="bar-value">{count}</div>
+                </div>
+                """
+                )
+            )
+        bar_html.append("</div></div>")
+        st.markdown("".join(bar_html), unsafe_allow_html=True)
 
 def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "owner" not in df.columns:
@@ -1469,7 +1473,7 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
     return "".join(panel_html)
 
 def render_owner_summary_panel(df: pd.DataFrame) -> None:
-    owner_container = st.container(height=420, border=False)
+    owner_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=False)
     with owner_container:
         st.markdown(
             '<div class="panel-card">' + build_compact_owner_panel_html(df) + "</div>",
