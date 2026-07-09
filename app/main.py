@@ -1651,84 +1651,67 @@ def build_detail_display_frame(df: pd.DataFrame) -> pd.DataFrame:
     )
     return display_df.reset_index(drop=True)
 
-def build_selected_proposal_detail_html(row: pd.Series) -> str:
+def render_detail_field(label: str, value: str) -> None:
+    st.markdown(f"**{label}**")
+    st.write(value)
+
+
+def render_selected_proposal_detail(row: pd.Series) -> None:
     status_name = str(row.get("status_name", "")).strip() or "미입력"
-    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
     awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
     awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
-    notes_value = str(row.get("notes", "")).strip()
-    notes_html = (
-        f"""
-        <div class="proposal-note-card">
-            <div class="proposal-note-label">비고</div>
-            <div class="proposal-note-value">{html.escape(notes_value)}</div>
-        </div>
-        """
-        if notes_value
-        else ""
-    )
+    d_day_text, _ = format_d_day(row.get("days_to_deadline"))
 
-    detail_items = [
+    header_cols = st.columns([0.82, 0.18], vertical_alignment="center")
+    with header_cols[0]:
+        st.caption(str(row.get("business_name", "")).strip() or "-")
+        st.markdown(f"**{str(row.get('project_name', '')).strip() or '-'}**")
+    with header_cols[1]:
+        st.markdown(
+            f"<div style='text-align:right;'><span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    info_cols = st.columns(5)
+    info_items = [
         ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
         ("주제", str(row.get("topic", "")).strip() or "-"),
         ("부처", str(row.get("ministry", "")).strip() or "-"),
         ("기관", str(row.get("agency", "")).strip() or "-"),
         ("담당자", str(row.get("owner", "")).strip() or "-"),
+    ]
+    for column, (label, value) in zip(info_cols, info_items):
+        with column:
+            render_detail_field(label, value)
+
+    extra_cols = st.columns(5)
+    extra_items = [
         ("협력기관", str(row.get("partner", "")).strip() or "-"),
         ("마감일", format_deadline(row.get("submission_deadline"))),
-        ("D-Day", f'<span class="d-day {d_day_class}">{html.escape(d_day_text)}</span>'),
+        ("D-Day", d_day_text),
         ("수주여부", awarded_text),
         ("최종수정", format_timestamp(row.get("last_updated_at"))),
     ]
+    for column, (label, value) in zip(extra_cols, extra_items):
+        with column:
+            render_detail_field(label, value)
 
-    detail_grid_html = "".join(
-        f"""
-        <div class="proposal-detail-item">
-            <div class="proposal-detail-label">{html.escape(label)}</div>
-            <div class="proposal-detail-value">{value if label == "D-Day" else html.escape(value)}</div>
-        </div>
-        """
-        for label, value in detail_items
-    )
-
+    st.markdown("**금액 상세**")
+    amount_cols = st.columns(4)
     amount_items = [
         ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
         ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
         ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
         ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
     ]
-    amount_grid_html = "".join(
-        f"""
-        <div class="proposal-amount-card">
-            <div class="proposal-amount-label">{html.escape(label)}</div>
-            <div class="proposal-amount-value">{html.escape(value)}</div>
-        </div>
-        """
-        for label, value in amount_items
-    )
+    for column, (label, value) in zip(amount_cols, amount_items):
+        with column:
+            render_detail_field(label, value)
 
-    business_name = str(row.get("business_name", "")).strip() or "-"
-    project_name = str(row.get("project_name", "")).strip() or "-"
-    return dedent(
-        f"""
-        <div class="proposal-detail-card">
-            <div class="proposal-detail-header">
-                <div>
-                    <div class="proposal-detail-business">{html.escape(business_name)}</div>
-                    <div class="proposal-detail-project">{html.escape(project_name)}</div>
-                </div>
-                <span class="status-pill {status_pill_class(status_name)}">{html.escape(status_name)}</span>
-            </div>
-            <div class="proposal-detail-grid">
-                {detail_grid_html}
-            </div>
-            <div class="proposal-amount-grid">
-                {amount_grid_html}
-            </div>
-            {notes_html}
-        </div>
-        """
-    )
+    notes_value = str(row.get("notes", "")).strip()
+    if notes_value:
+        st.markdown("**비고**")
+        st.write(notes_value)
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -1861,9 +1844,11 @@ def render_detail_section(df: pd.DataFrame) -> None:
     )
     detail_df = prepare_detail_display_rows(df)
     st.markdown("#### 과제 상세 펼쳐보기")
-    for row_index, (_, row) in enumerate(detail_df.iterrows()):
-        with st.expander(build_proposal_expander_label(row), expanded=row_index == 0):
-            st.markdown(build_selected_proposal_detail_html(row), unsafe_allow_html=True)
+    detail_container = st.container(height=560, border=False)
+    with detail_container:
+        for row_index, (_, row) in enumerate(detail_df.iterrows()):
+            with st.expander(build_proposal_expander_label(row), expanded=row_index == 0):
+                render_selected_proposal_detail(row)
 
 
 def main() -> None:
