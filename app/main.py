@@ -1722,6 +1722,58 @@ def build_proposal_expander_label(row: pd.Series) -> str:
     owner_name = str(row.get("owner", "")).strip() or "-"
     return f"{business_name} | {project_name} | {status_name} | {deadline_text} | {d_day_text} | {owner_name}"
 
+
+def proposal_row_key(row: pd.Series, fallback_index: int) -> str:
+    proposal_id = str(row.get("proposal_id", "")).strip()
+    return proposal_id or f"row-{fallback_index}"
+
+
+def render_proposal_summary_card(row: pd.Series, row_key: str) -> None:
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    owner_name = str(row.get("owner", "")).strip() or "-"
+    ministry_name = str(row.get("ministry", "")).strip() or "-"
+    deadline_text = format_deadline(row.get("submission_deadline"))
+
+    header_cols = st.columns([0.62, 0.14, 0.14, 0.10], vertical_alignment="center")
+    with header_cols[0]:
+        st.caption(business_name)
+        st.markdown(f"**{project_name}**")
+    with header_cols[1]:
+        st.caption("담당자")
+        st.write(owner_name)
+    with header_cols[2]:
+        st.caption("마감일")
+        st.write(deadline_text)
+    with header_cols[3]:
+        is_open = st.session_state.get("expanded_proposal_key") == row_key
+        button_label = "접기" if is_open else "상세"
+        if st.button(button_label, key=f"toggle_{row_key}", use_container_width=True):
+            st.session_state["expanded_proposal_key"] = None if is_open else row_key
+            st.rerun()
+
+    meta_cols = st.columns([0.34, 0.24, 0.20, 0.22], vertical_alignment="center")
+    with meta_cols[0]:
+        st.caption("부처")
+        st.write(ministry_name)
+    with meta_cols[1]:
+        st.caption("상태")
+        st.markdown(
+            f"<span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span>",
+            unsafe_allow_html=True,
+        )
+    with meta_cols[2]:
+        st.caption("D-Day")
+        st.markdown(
+            f"<span class='d-day {d_day_class}'>{html.escape(d_day_text)}</span>",
+            unsafe_allow_html=True,
+        )
+    with meta_cols[3]:
+        st.caption("주제")
+        st.write(str(row.get("topic", "")).strip() or "-")
+
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
         return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
@@ -1830,7 +1882,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">과제 줄을 클릭해 펼치면 주제와 개별 금액 상세를 바로 확인할 수 있습니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">카드형 리스트에서 상세 버튼을 누르면 같은 카드 아래로 주제와 개별 금액 상세가 펼쳐집니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
         """
         ),
         unsafe_allow_html=True,
@@ -1843,12 +1895,19 @@ def render_detail_section(df: pd.DataFrame) -> None:
         use_container_width=True,
     )
     detail_df = prepare_detail_display_rows(df)
-    st.markdown("#### 과제 상세 펼쳐보기")
+    if "expanded_proposal_key" not in st.session_state and not detail_df.empty:
+        st.session_state["expanded_proposal_key"] = proposal_row_key(detail_df.iloc[0], 0)
+
+    st.markdown("#### 과제 카드")
     detail_container = st.container(height=560, border=False)
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
-            with st.expander(build_proposal_expander_label(row), expanded=row_index == 0):
-                render_selected_proposal_detail(row)
+            row_key = proposal_row_key(row, row_index)
+            with st.container(border=True):
+                render_proposal_summary_card(row, row_key)
+                if st.session_state.get("expanded_proposal_key") == row_key:
+                    st.divider()
+                    render_selected_proposal_detail(row)
 
 
 def main() -> None:
