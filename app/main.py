@@ -439,6 +439,7 @@ def inject_styles() -> None:
             grid-template-columns: 88px 1fr 38px;
             align-items: center;
             gap: 0.75rem;
+            margin-bottom: 1rem;
         }
 
         .bar-label {
@@ -934,6 +935,38 @@ def inject_styles() -> None:
             margin-top: 0.75rem;
         }
 
+        .proposal-square-business {
+            color: var(--text-sub);
+            font-size: 0.84rem;
+            font-weight: 700;
+            line-height: 1.45;
+            margin-bottom: 0.45rem;
+        }
+
+        .proposal-square-project {
+            color: var(--text-main);
+            font-size: 0.98rem;
+            font-weight: 800;
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 4.35em;
+            margin-bottom: 0.85rem;
+        }
+
+        .proposal-square-topic {
+            color: var(--text-main);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            display: -webkit-box;
+            -webkit-line-clamp: 4;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 6em;
+        }
+
         .top-panel-row {
             margin-top: 0.55rem;
         }
@@ -1194,44 +1227,35 @@ def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], 
     return selected_products, selected_statuses, selected_ministries, keyword
 
 def render_rank_panel(title: str, summary_df: pd.DataFrame, label_column: str) -> None:
-    panel_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=False)
+    panel_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=True)
     with panel_container:
+        st.markdown(f"<h3 class='panel-title'>{html.escape(title)}</h3>", unsafe_allow_html=True)
         if summary_df.empty:
-            st.markdown(
-                dedent(
-                    f"""
-                    <div class="panel-card summary-panel-card">
-                        <h3 class="panel-title">{html.escape(title)}</h3>
-                        <div class="empty-state">표시할 데이터가 없습니다.</div>
-                    </div>
-                """
-                ),
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="empty-state">표시할 데이터가 없습니다.</div>', unsafe_allow_html=True)
             return
 
         max_count = max(int(summary_df["proposal_count"].max()), 1)
-        bar_html: list[str] = [f'<div class="panel-card summary-panel-card"><h3 class="panel-title">{html.escape(title)}</h3><div class="summary-panel-scroll"><div class="bar-list">']
+        rows_html: list[str] = ['<div class="summary-panel-scroll"><div class="bar-list">']
         for index, row in summary_df.iterrows():
             label = str(row[label_column]).strip() or "미입력"
             count = int(row["proposal_count"])
             accent, _ = CARD_STYLES[index % len(CARD_STYLES)]
             width = max(count / max_count * 100, 8)
-            bar_html.append(
+            rows_html.append(
                 dedent(
                     f"""
-                <div class="bar-row">
-                    <div class="bar-label">{html.escape(label)}</div>
-                    <div class="bar-track">
-                        <div class="bar-fill" style="width:{width:.1f}%; background:{accent};"></div>
+                    <div class="bar-row">
+                        <div class="bar-label">{html.escape(label)}</div>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width:{width:.1f}%; background:{accent};"></div>
+                        </div>
+                        <div class="bar-value">{count}</div>
                     </div>
-                    <div class="bar-value">{count}</div>
-                </div>
-                """
+                    """
                 )
             )
-        bar_html.append("</div></div></div>")
-        st.markdown("".join(bar_html), unsafe_allow_html=True)
+        rows_html.append("</div></div>")
+        st.markdown("".join(rows_html), unsafe_allow_html=True)
 
 def build_owner_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "owner" not in df.columns:
@@ -1493,12 +1517,13 @@ def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
     return "".join(panel_html)
 
 def render_owner_summary_panel(df: pd.DataFrame) -> None:
-    owner_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=False)
+    owner_container = st.container(height=TOP_SUMMARY_PANEL_HEIGHT, border=True)
     with owner_container:
-        st.markdown(
-            '<div class="panel-card summary-panel-card">' + build_compact_owner_panel_html(df) + "</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown('<h3 class="panel-title">책임자 현황</h3>', unsafe_allow_html=True)
+        if build_owner_summary(df).empty:
+            st.markdown('<div class="empty-state">표시할 책임자 데이터가 없습니다.</div>', unsafe_allow_html=True)
+            return
+        st.markdown(build_compact_owner_panel_html(df), unsafe_allow_html=True)
 
 def render_deadline_owner_panel(deadline_df: pd.DataFrame, owner_df: pd.DataFrame) -> None:
     counts = deadline_bucket_counts(deadline_df)
@@ -1811,9 +1836,9 @@ def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
     deadline_text = format_deadline(row.get("submission_deadline"))
     topic_name = str(row.get("topic", "")).strip() or "-"
 
-    with st.container(border=True):
-        st.caption(business_name)
-        st.markdown(f"**{project_name}**")
+    with st.container(height=320, border=True):
+        st.markdown(f"<div class='proposal-square-business'>{html.escape(business_name)}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='proposal-square-project'>{html.escape(project_name)}</div>", unsafe_allow_html=True)
 
         top_cols = st.columns([0.58, 0.42], vertical_alignment="top")
         with top_cols[0]:
@@ -1843,17 +1868,13 @@ def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
             st.write(ministry_name)
         with bottom_cols[1]:
             st.caption("주제")
-            st.write(topic_name)
+            st.markdown(f"<div class='proposal-square-topic'>{html.escape(topic_name)}</div>", unsafe_allow_html=True)
 
         is_open = st.session_state.get("expanded_proposal_key") == row_key
         button_label = "접기" if is_open else "상세 보기"
         if st.button(button_label, key=f"card_toggle_{row_key}", use_container_width=True):
             st.session_state["expanded_proposal_key"] = None if is_open else row_key
             st.rerun()
-
-        if is_open:
-            st.divider()
-            render_selected_proposal_detail(row)
 
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
@@ -1980,16 +2001,31 @@ def render_detail_section(df: pd.DataFrame) -> None:
         st.session_state["expanded_proposal_key"] = None
 
     st.markdown("#### 과제 카드")
-    detail_container = st.container(height=560, border=False)
-    with detail_container:
-        card_columns: list = []
-        for row_index, (_, row) in enumerate(detail_df.iterrows()):
-            if row_index % 3 == 0:
-                card_columns = st.columns(3, gap="small")
-            card_column = card_columns[row_index % 3]
-            row_key = proposal_row_key(row, row_index)
-            with card_column:
-                render_proposal_square_card(row, row_key)
+    list_column, detail_column = st.columns([0.64, 0.36], gap="small")
+    selected_row = None
+
+    with list_column:
+        detail_container = st.container(height=680, border=False)
+        with detail_container:
+            card_columns: list = []
+            for row_index, (_, row) in enumerate(detail_df.iterrows()):
+                if row_index % 2 == 0:
+                    card_columns = st.columns(2, gap="small")
+                card_column = card_columns[row_index % 2]
+                row_key = proposal_row_key(row, row_index)
+                if st.session_state.get("expanded_proposal_key") == row_key:
+                    selected_row = row
+                with card_column:
+                    render_proposal_square_card(row, row_key)
+
+    with detail_column:
+        detail_panel = st.container(height=680, border=True)
+        with detail_panel:
+            st.markdown("#### 과제 상세")
+            if selected_row is None:
+                st.info("카드에서 `상세 보기`를 누르면 이 영역에서 상세 내용을 넓게 볼 수 있습니다.")
+            else:
+                render_selected_proposal_detail(selected_row)
 
 
 def main() -> None:
