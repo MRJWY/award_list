@@ -1465,12 +1465,7 @@ def render_deadline_panel(df: pd.DataFrame) -> None:
 def build_compact_owner_panel_html(df: pd.DataFrame) -> str:
     owner_summary = build_owner_summary(df)
 
-    panel_html = [
-        """
-        <div class="split-panel-section">
-            <h3 class="panel-title">책임자 현황</h3>
-        """
-    ]
+    panel_html = ['<div class="split-panel-section">']
 
     if owner_summary.empty:
         panel_html.append('<div class="empty-state">표시할 책임자 데이터가 없습니다.</div></div>')
@@ -1876,6 +1871,57 @@ def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
             st.session_state["expanded_proposal_key"] = None if is_open else row_key
             st.rerun()
 
+
+def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
+    status_name = str(row.get("status_name", "")).strip() or "미입력"
+    d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
+    business_name = str(row.get("business_name", "")).strip() or "-"
+    project_name = str(row.get("project_name", "")).strip() or "-"
+    owner_name = str(row.get("owner", "")).strip() or "-"
+    ministry_name = str(row.get("ministry", "")).strip() or "-"
+    deadline_text = format_deadline(row.get("submission_deadline"))
+    topic_name = str(row.get("topic", "")).strip() or "-"
+    is_open = st.session_state.get("expanded_proposal_key") == row_key
+    button_label = "접기" if is_open else "상세 보기"
+
+    with st.container(border=True):
+        top_cols = st.columns([0.46, 0.14, 0.14, 0.12, 0.14], vertical_alignment="center")
+        with top_cols[0]:
+            st.caption(business_name)
+            st.markdown(f"**{project_name}**")
+        with top_cols[1]:
+            st.caption("담당자")
+            st.write(owner_name)
+        with top_cols[2]:
+            st.caption("부처")
+            st.write(ministry_name)
+        with top_cols[3]:
+            st.caption("마감 / D-Day")
+            st.write(deadline_text)
+            st.markdown(
+                f"<span class='d-day {d_day_class}'>{html.escape(d_day_text)}</span>",
+                unsafe_allow_html=True,
+            )
+        with top_cols[4]:
+            st.caption("상태")
+            st.markdown(
+                f"<div style='margin-bottom:0.5rem;'><span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(button_label, key=f"list_toggle_{row_key}", use_container_width=True):
+                st.session_state["expanded_proposal_key"] = None if is_open else row_key
+                st.rerun()
+
+        topic_cols = st.columns([0.12, 0.88], vertical_alignment="top")
+        with topic_cols[0]:
+            st.caption("주제")
+        with topic_cols[1]:
+            st.write(topic_name)
+
+        if is_open:
+            st.divider()
+            render_selected_proposal_detail(row)
+
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
         return '<div class="empty-state">표시할 제안 데이터가 없습니다.</div>'
@@ -2001,31 +2047,11 @@ def render_detail_section(df: pd.DataFrame) -> None:
         st.session_state["expanded_proposal_key"] = None
 
     st.markdown("#### 과제 카드")
-    list_column, detail_column = st.columns([0.64, 0.36], gap="small")
-    selected_row = None
-
-    with list_column:
-        detail_container = st.container(height=680, border=False)
-        with detail_container:
-            card_columns: list = []
-            for row_index, (_, row) in enumerate(detail_df.iterrows()):
-                if row_index % 2 == 0:
-                    card_columns = st.columns(2, gap="small")
-                card_column = card_columns[row_index % 2]
-                row_key = proposal_row_key(row, row_index)
-                if st.session_state.get("expanded_proposal_key") == row_key:
-                    selected_row = row
-                with card_column:
-                    render_proposal_square_card(row, row_key)
-
-    with detail_column:
-        detail_panel = st.container(height=680, border=True)
-        with detail_panel:
-            st.markdown("#### 과제 상세")
-            if selected_row is None:
-                st.info("카드에서 `상세 보기`를 누르면 이 영역에서 상세 내용을 넓게 볼 수 있습니다.")
-            else:
-                render_selected_proposal_detail(selected_row)
+    detail_container = st.container(height=680, border=False)
+    with detail_container:
+        for row_index, (_, row) in enumerate(detail_df.iterrows()):
+            row_key = proposal_row_key(row, row_index)
+            render_proposal_list_card(row, row_key)
 
 
 def main() -> None:
