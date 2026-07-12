@@ -2047,7 +2047,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         st.session_state["expanded_proposal_key"] = None
 
     st.markdown("#### 과제 카드")
-    detail_container = st.container(height=680, border=False)
+    detail_container = st.container(border=False)
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
             row_key = proposal_row_key(row, row_index)
