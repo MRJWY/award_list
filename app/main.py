@@ -29,6 +29,7 @@ from integrations.google_sheets import (
     WorkbookLoadResult,
     build_google_sheet_diagnostics,
     create_proposal_master_record,
+    load_cached_workbook_frames,
     load_live_or_cached_workbook_frames,
     resolve_workbook_update_timestamp,
     update_proposal_master_record,
@@ -112,9 +113,16 @@ def build_product_code_options(
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object], list[dict[str, str]]]:
+def load_dashboard_data(prefer_cache: bool = False) -> tuple[pd.DataFrame, object, str, str, dict[str, object], list[dict[str, str]]]:
     settings = load_settings()
-    load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
+    if prefer_cache:
+        load_result = WorkbookLoadResult(
+            workbook_frames=load_cached_workbook_frames(settings),
+            source="cache",
+            message="Using local cache immediately after a sheet write.",
+        )
+    else:
+        load_result = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
     latest_update = resolve_workbook_update_timestamp(load_result.workbook_frames, settings, load_result.source)
@@ -1817,6 +1825,7 @@ def save_proposal_edit(row: pd.Series, row_key: str, payload: dict[str, object])
         return False
 
     st.cache_data.clear()
+    st.session_state["prefer_cached_dashboard_once"] = True
     st.session_state["proposal_save_message"] = {
         "proposal_id": proposal_id,
         "message": f"{proposal_id} 항목을 Google Sheet에 저장했습니다.",
@@ -1909,6 +1918,7 @@ def render_new_proposal_form(product_options: list[dict[str, str]]) -> None:
 
     created_proposal_id = str(created_record.get("proposal_id", "")).strip()
     st.cache_data.clear()
+    st.session_state["prefer_cached_dashboard_once"] = True
     st.session_state["proposal_create_message"] = (
         f"{created_proposal_id or '신규 과제'}가 Google Sheet에 추가되었습니다."
     )
@@ -1942,10 +1952,11 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
         if st.button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
             if is_editing:
                 editing_keys.discard(row_key)
+                is_editing = False
             else:
                 editing_keys.add(row_key)
+                is_editing = True
             set_editing_proposal_keys(editing_keys)
-            st.rerun()
 
     notes_value = str(row.get("notes", "")).strip()
     save_message = st.session_state.get("proposal_save_message")
@@ -2136,8 +2147,8 @@ def render_proposal_summary_card(row: pd.Series, row_key: str) -> None:
         is_open = st.session_state.get("expanded_proposal_key") == row_key
         button_label = "접기" if is_open else "상세"
         if st.button(button_label, key=f"toggle_{row_key}", use_container_width=True):
-            st.session_state["expanded_proposal_key"] = None if is_open else row_key
-            st.rerun()
+            is_open = not is_open
+            st.session_state["expanded_proposal_key"] = row_key if is_open else None
 
     meta_cols = st.columns([0.34, 0.24, 0.20, 0.22], vertical_alignment="center")
     with meta_cols[0]:
@@ -2207,8 +2218,8 @@ def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
         is_open = st.session_state.get("expanded_proposal_key") == row_key
         button_label = "접기" if is_open else "상세 보기"
         if st.button(button_label, key=f"card_toggle_{row_key}", use_container_width=True):
-            st.session_state["expanded_proposal_key"] = None if is_open else row_key
-            st.rerun()
+            is_open = not is_open
+            st.session_state["expanded_proposal_key"] = row_key if is_open else None
 
 
 def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
@@ -2251,10 +2262,11 @@ def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
             if st.button(button_label, key=f"list_toggle_{row_key}", use_container_width=True):
                 if is_open:
                     open_keys.discard(row_key)
+                    is_open = False
                 else:
                     open_keys.add(row_key)
+                    is_open = True
                 set_expanded_proposal_keys(open_keys)
-                st.rerun()
 
         topic_cols = st.columns([0.12, 0.88], vertical_alignment="top")
         with topic_cols[0]:
@@ -2398,13 +2410,10 @@ def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]
     action_cols = st.columns([0.12, 0.12, 0.16, 0.60], vertical_alignment="center")
     if action_cols[0].button("전체 펼치기", use_container_width=True):
         set_expanded_proposal_keys({proposal_row_key(row, idx) for idx, (_, row) in enumerate(detail_df.iterrows())})
-        st.rerun()
     if action_cols[1].button("전체 접기", use_container_width=True):
         set_expanded_proposal_keys(set())
-        st.rerun()
     if action_cols[2].button("신규 과제 추가", use_container_width=True):
         set_new_proposal_form_open(not new_proposal_form_open())
-        st.rerun()
     if new_proposal_form_open():
         render_new_proposal_form(product_options)
     detail_container = st.container(border=False)
@@ -2419,7 +2428,9 @@ def main() -> None:
     inject_styles()
 
     try:
-        proposal_df, latest_sync, data_source, load_message, diagnostics, product_options = load_dashboard_data()
+        prefer_cache = bool(st.session_state.get("prefer_cached_dashboard_once", False))
+        st.session_state["prefer_cached_dashboard_once"] = False
+        proposal_df, latest_sync, data_source, load_message, diagnostics, product_options = load_dashboard_data(prefer_cache)
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
