@@ -1757,7 +1757,10 @@ def render_selected_proposal_detail(row: pd.Series) -> None:
     notes_value = str(row.get("notes", "")).strip()
     if notes_value:
         st.markdown("**비고**")
-        st.write(notes_value)
+        st.markdown(
+            f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
+            unsafe_allow_html=True,
+        )
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -1772,6 +1775,17 @@ def build_proposal_expander_label(row: pd.Series) -> str:
 def proposal_row_key(row: pd.Series, fallback_index: int) -> str:
     proposal_id = str(row.get("proposal_id", "")).strip()
     return proposal_id or f"row-{fallback_index}"
+
+
+def expanded_proposal_keys() -> set[str]:
+    keys = st.session_state.get("expanded_proposal_keys")
+    if not isinstance(keys, list):
+        return set()
+    return {str(key) for key in keys}
+
+
+def set_expanded_proposal_keys(keys: set[str]) -> None:
+    st.session_state["expanded_proposal_keys"] = sorted(keys)
 
 
 def render_proposal_summary_card(row: pd.Series, row_key: str) -> None:
@@ -1881,7 +1895,8 @@ def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
     ministry_name = str(row.get("ministry", "")).strip() or "-"
     deadline_text = format_deadline(row.get("submission_deadline"))
     topic_name = str(row.get("topic", "")).strip() or "-"
-    is_open = st.session_state.get("expanded_proposal_key") == row_key
+    open_keys = expanded_proposal_keys()
+    is_open = row_key in open_keys
     button_label = "접기" if is_open else "상세 보기"
 
     with st.container(border=True):
@@ -1909,7 +1924,11 @@ def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
                 unsafe_allow_html=True,
             )
             if st.button(button_label, key=f"list_toggle_{row_key}", use_container_width=True):
-                st.session_state["expanded_proposal_key"] = None if is_open else row_key
+                if is_open:
+                    open_keys.discard(row_key)
+                else:
+                    open_keys.add(row_key)
+                set_expanded_proposal_keys(open_keys)
                 st.rerun()
 
         topic_cols = st.columns([0.12, 0.88], vertical_alignment="top")
@@ -2043,10 +2062,17 @@ def render_detail_section(df: pd.DataFrame) -> None:
         use_container_width=True,
     )
     detail_df = prepare_detail_display_rows(df)
-    if "expanded_proposal_key" not in st.session_state:
-        st.session_state["expanded_proposal_key"] = None
+    if "expanded_proposal_keys" not in st.session_state:
+        st.session_state["expanded_proposal_keys"] = []
 
     st.markdown("#### 과제 카드")
+    action_cols = st.columns([0.12, 0.12, 0.76], vertical_alignment="center")
+    if action_cols[0].button("전체 펼치기", use_container_width=True):
+        set_expanded_proposal_keys({proposal_row_key(row, idx) for idx, (_, row) in enumerate(detail_df.iterrows())})
+        st.rerun()
+    if action_cols[1].button("전체 접기", use_container_width=True):
+        set_expanded_proposal_keys(set())
+        st.rerun()
     detail_container = st.container(border=False)
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
