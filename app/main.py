@@ -1980,66 +1980,73 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
             f"<div style='text-align:right;'><span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span></div>",
             unsafe_allow_html=True,
         )
-
-    info_cols = st.columns(5)
-    info_items = [
-        ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
-        ("주제", str(row.get("topic", "")).strip() or "-"),
-        ("부처", str(row.get("ministry", "")).strip() or "-"),
-        ("기관", str(row.get("agency", "")).strip() or "-"),
-        ("담당자", str(row.get("owner", "")).strip() or "-"),
-    ]
-    for column, (label, value) in zip(info_cols, info_items):
-        with column:
-            render_detail_field(label, value)
-
-    extra_cols = st.columns(5)
-    extra_items = [
-        ("협력기관", str(row.get("partner", "")).strip() or "-"),
-        ("마감일", format_deadline(row.get("submission_deadline"))),
-        ("D-Day", d_day_text),
-        ("수주여부", awarded_text),
-        ("최종수정", format_timestamp(row.get("last_updated_at"))),
-    ]
-    for column, (label, value) in zip(extra_cols, extra_items):
-        with column:
-            render_detail_field(label, value)
-
-    st.markdown("**금액 상세**")
-    amount_cols = st.columns(4)
-    amount_items = [
-        ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
-        ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
-        ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
-        ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
-    ]
-    for column, (label, value) in zip(amount_cols, amount_items):
-        with column:
-            render_detail_field(label, value)
-
-    notes_value = str(row.get("notes", "")).strip()
-    if notes_value:
-        st.markdown("**비고**")
-        st.markdown(
-            f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.divider()
-    action_cols = st.columns([0.12, 0.88], vertical_alignment="center")
     editing_keys = editing_proposal_keys()
     is_editing = row_key in editing_keys
-    edit_label = "수정 닫기" if is_editing else "수정"
-    if action_cols[0].button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
-        if is_editing:
-            editing_keys.discard(row_key)
-        else:
-            editing_keys.add(row_key)
-        set_editing_proposal_keys(editing_keys)
-        st.rerun()
+    notes_value = str(row.get("notes", "")).strip()
 
-    if is_editing:
-        render_proposal_edit_form(row, row_key)
+    info_tab, schedule_tab, budget_tab, notes_tab = st.tabs(["기본 정보", "일정 / 상태", "금액", "비고 / 수정"])
+
+    with info_tab:
+        info_cols = st.columns(5)
+        info_items = [
+            ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
+            ("주제", str(row.get("topic", "")).strip() or "-"),
+            ("부처", str(row.get("ministry", "")).strip() or "-"),
+            ("기관", str(row.get("agency", "")).strip() or "-"),
+            ("담당자", str(row.get("owner", "")).strip() or "-"),
+        ]
+        for column, (label, value) in zip(info_cols, info_items):
+            with column:
+                render_detail_field(label, value)
+
+    with schedule_tab:
+        extra_cols = st.columns(5)
+        extra_items = [
+            ("협력기관", str(row.get("partner", "")).strip() or "-"),
+            ("마감일", format_deadline(row.get("submission_deadline"))),
+            ("D-Day", d_day_text),
+            ("수주여부", awarded_text),
+            ("최종수정", format_timestamp(row.get("last_updated_at"))),
+        ]
+        for column, (label, value) in zip(extra_cols, extra_items):
+            with column:
+                render_detail_field(label, value)
+
+    with budget_tab:
+        amount_cols = st.columns(4)
+        amount_items = [
+            ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
+            ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
+            ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
+            ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
+        ]
+        for column, (label, value) in zip(amount_cols, amount_items):
+            with column:
+                render_detail_field(label, value)
+
+    with notes_tab:
+        st.markdown("**비고**")
+        if notes_value:
+            st.markdown(
+                f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.caption("입력된 비고가 없습니다.")
+
+        st.divider()
+        action_cols = st.columns([0.16, 0.84], vertical_alignment="center")
+        edit_label = "수정 닫기" if is_editing else "수정"
+        if action_cols[0].button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
+            if is_editing:
+                editing_keys.discard(row_key)
+            else:
+                editing_keys.add(row_key)
+            set_editing_proposal_keys(editing_keys)
+            st.rerun()
+
+        if is_editing:
+            render_proposal_edit_form(row, row_key)
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
