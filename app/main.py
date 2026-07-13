@@ -80,15 +80,47 @@ EDITABLE_STATUS_OPTIONS = sort_status_values(
 )
 
 
+def build_product_code_options(
+    workbook_frames: dict[str, pd.DataFrame],
+    settings,
+) -> list[dict[str, str]]:
+    product_df = workbook_frames.get(settings.google_worksheet_code_map_product, pd.DataFrame()).copy()
+    if product_df.empty:
+        return []
+
+    product_df.columns = [str(column).strip() for column in product_df.columns]
+    if "product_code" not in product_df.columns:
+        return []
+
+    if "is_active" in product_df.columns:
+        active_values = product_df["is_active"].fillna("").astype(str).str.upper().str.strip()
+        product_df = product_df[active_values.isin({"", "Y", "YES", "TRUE", "1"})]
+
+    if "display_order" in product_df.columns:
+        product_df["display_order"] = pd.to_numeric(product_df["display_order"], errors="coerce")
+        product_df = product_df.sort_values(by=["display_order", "product_code"], ascending=[True, True], na_position="last")
+    else:
+        product_df = product_df.sort_values(by=["product_code"], ascending=[True])
+
+    options: list[dict[str, str]] = []
+    for _, row in product_df.iterrows():
+        code = str(row.get("product_code", "")).strip()
+        name = str(row.get("product_name", "")).strip()
+        if code:
+            options.append({"code": code, "name": name})
+    return options
+
+
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object]]:
+def load_dashboard_data() -> tuple[pd.DataFrame, object, str, str, dict[str, object], list[dict[str, str]]]:
     settings = load_settings()
     load_result: WorkbookLoadResult = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
     latest_update = resolve_workbook_update_timestamp(load_result.workbook_frames, settings, load_result.source)
     diagnostics = build_google_sheet_diagnostics(settings)
-    return normalized, latest_update, load_result.source, load_result.message, diagnostics
+    product_options = build_product_code_options(load_result.workbook_frames, settings)
+    return normalized, latest_update, load_result.source, load_result.message, diagnostics, product_options
 
 
 def render_connection_diagnostics(load_message: str, diagnostics: dict[str, object]) -> None:
@@ -1748,38 +1780,6 @@ def parse_editable_amount(value: str, label: str) -> float | None:
     return float(numeric)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def load_product_code_options() -> list[dict[str, str]]:
-    settings = load_settings()
-    load_result = load_live_or_cached_workbook_frames(settings)
-    product_df = load_result.workbook_frames.get(settings.google_worksheet_code_map_product, pd.DataFrame()).copy()
-    if product_df.empty:
-        return []
-
-    product_df.columns = [str(column).strip() for column in product_df.columns]
-    if "product_code" not in product_df.columns:
-        return []
-
-    if "is_active" in product_df.columns:
-        active_values = product_df["is_active"].fillna("").astype(str).str.upper().str.strip()
-        product_df = product_df[active_values.isin({"", "Y", "YES", "TRUE", "1"})]
-
-    if "display_order" in product_df.columns:
-        product_df["display_order"] = pd.to_numeric(product_df["display_order"], errors="coerce")
-        product_df = product_df.sort_values(by=["display_order", "product_code"], ascending=[True, True], na_position="last")
-    else:
-        product_df = product_df.sort_values(by=["product_code"], ascending=[True])
-
-    options: list[dict[str, str]] = []
-    for _, row in product_df.iterrows():
-        code = str(row.get("product_code", "")).strip()
-        name = str(row.get("product_name", "")).strip()
-        if not code:
-            continue
-        options.append({"code": code, "name": name})
-    return options
-
-
 def editing_proposal_keys() -> set[str]:
     keys = st.session_state.get("editing_proposal_keys")
     if not isinstance(keys, list):
@@ -1872,12 +1872,11 @@ def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
     st.rerun()
 
 
-def render_new_proposal_form() -> None:
+def render_new_proposal_form(product_options: list[dict[str, str]]) -> None:
     save_message = st.session_state.get("proposal_create_message")
     if isinstance(save_message, str) and save_message.strip():
         st.success(save_message)
 
-    product_options = load_product_code_options()
     product_codes = [option["code"] for option in product_options]
     product_labels = {
         option["code"]: f'{option["code"]} | {option["name"]}' if option["name"] else option["code"]
@@ -2323,7 +2322,7 @@ def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
             export_df[column] = export_df[column].apply(format_deadline if column == DISPLAY_LABELS.get("submission_deadline", "submission_deadline") else format_timestamp)
     return export_df
 
-def render_detail_section(df: pd.DataFrame) -> None:
+def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]]) -> None:
     toolbar_left, toolbar_right = st.columns([0.8, 0.2])
     toolbar_left.markdown(
         dedent(
@@ -2361,7 +2360,7 @@ def render_detail_section(df: pd.DataFrame) -> None:
         set_new_proposal_form_open(not new_proposal_form_open())
         st.rerun()
     if new_proposal_form_open():
-        render_new_proposal_form()
+        render_new_proposal_form(product_options)
     detail_container = st.container(border=False)
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
@@ -2374,7 +2373,7 @@ def main() -> None:
     inject_styles()
 
     try:
-        proposal_df, latest_sync, data_source, load_message, diagnostics = load_dashboard_data()
+        proposal_df, latest_sync, data_source, load_message, diagnostics, product_options = load_dashboard_data()
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
@@ -2419,7 +2418,7 @@ def main() -> None:
     with top_columns[2]:
         render_owner_summary_panel(filtered_df)
 
-    render_detail_section(filtered_df)
+    render_detail_section(filtered_df, product_options)
 
 if __name__ == "__main__":
     main()

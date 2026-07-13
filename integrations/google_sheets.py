@@ -80,6 +80,11 @@ def _build_gspread_client(settings: Settings):
     return gspread.service_account(filename=str(service_account_path))
 
 
+def _open_workbook(settings: Settings):
+    client = _build_gspread_client(settings)
+    return client.open_by_key(settings.google_sheet_id)
+
+
 def _proposal_master_header_index_map(headers: list[object]) -> dict[str, int]:
     header_map: dict[str, int] = {}
     for index, raw_header in enumerate(headers, start=1):
@@ -117,8 +122,8 @@ def _serialize_update_value(column: str, value: object) -> str:
 
 
 def _status_name_to_code_map(settings: Settings) -> dict[str, str]:
-    status_records = fetch_worksheet_records(settings, settings.google_worksheet_code_map_status)
-    status_df = pd.DataFrame(status_records)
+    cached_frames = load_cached_workbook_frames(settings)
+    status_df = cached_frames.get(settings.google_worksheet_code_map_status, pd.DataFrame()).copy()
     if status_df.empty or "status_name" not in status_df.columns or "status_code" not in status_df.columns:
         return {}
 
@@ -127,6 +132,54 @@ def _status_name_to_code_map(settings: Settings) -> dict[str, str]:
         for _, row in status_df.iterrows()
         if normalize_text(row.get("status_name"))
     }
+
+
+def _append_cache_csv_row(worksheet_name: str, headers: list[str], row_values: list[str]) -> None:
+    csv_path = cache_path_for_worksheet(worksheet_name)
+    row_df = pd.DataFrame([dict(zip(headers, row_values))])
+    if csv_path.exists():
+        try:
+            cached_df = pd.read_csv(csv_path)
+        except Exception:
+            cached_df = pd.DataFrame(columns=headers)
+        updated_df = pd.concat([cached_df, row_df], ignore_index=True)
+    else:
+        updated_df = row_df
+    updated_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+
+def _update_cache_csv_row(
+    worksheet_name: str,
+    headers: list[str],
+    key_column: str,
+    key_value: str,
+    updates: dict[str, str],
+) -> None:
+    csv_path = cache_path_for_worksheet(worksheet_name)
+    if not csv_path.exists():
+        return
+
+    try:
+        cached_df = pd.read_csv(csv_path)
+    except Exception:
+        return
+
+    if key_column not in cached_df.columns:
+        return
+
+    match_index = cached_df.index[cached_df[key_column].fillna("").astype(str).str.strip() == key_value]
+    if match_index.empty:
+        return
+
+    target_index = match_index[0]
+    for raw_header in headers:
+        canonical = str(PROPOSAL_MASTER_COLUMN_ALIASES.get(raw_header, raw_header))
+        if canonical not in updates:
+            continue
+        if raw_header not in cached_df.columns:
+            continue
+        cached_df.at[target_index, raw_header] = updates[canonical]
+    cached_df.to_csv(csv_path, index=False, encoding="utf-8-sig")
 
 
 def validate_proposal_master_edit_payload(
@@ -185,8 +238,7 @@ def append_sync_log_entry(
     message: str,
     row_count: int = 1,
 ) -> None:
-    client = _build_gspread_client(settings)
-    workbook = client.open_by_key(settings.google_sheet_id)
+    workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(settings.google_worksheet_sync_log)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     payload = {
@@ -203,12 +255,7 @@ def append_sync_log_entry(
     headers = [str(header).strip() for header in worksheet.row_values(1)]
     row_values = [payload.get(header, "") for header in headers]
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
-    refreshed_records = worksheet.get_all_records()
-    pd.DataFrame(refreshed_records).to_csv(
-        cache_path_for_worksheet(settings.google_worksheet_sync_log),
-        index=False,
-        encoding="utf-8-sig",
-    )
+    _append_cache_csv_row(settings.google_worksheet_sync_log, headers, row_values)
 
 
 def generate_next_proposal_id(worksheet) -> str:
@@ -240,8 +287,7 @@ def create_proposal_master_record(
     if not is_google_sheet_configured(settings):
         raise RuntimeError("Google Sheet is not configured.")
 
-    client = _build_gspread_client(settings)
-    workbook = client.open_by_key(settings.google_sheet_id)
+    workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(settings.google_worksheet_proposal_master)
     headers = [str(header).strip() for header in worksheet.row_values(1)]
     header_map = _proposal_master_header_index_map(headers)
@@ -327,12 +373,7 @@ def create_proposal_master_record(
             applied_values[str(canonical)] = serialized_value
 
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
-    refreshed_records = worksheet.get_all_records()
-    pd.DataFrame(refreshed_records).to_csv(
-        cache_path_for_worksheet(settings.google_worksheet_proposal_master),
-        index=False,
-        encoding="utf-8-sig",
-    )
+    _append_cache_csv_row(settings.google_worksheet_proposal_master, headers, row_values)
     append_sync_log_entry(
         settings=settings,
         action="MANUAL_CREATE",
@@ -347,8 +388,7 @@ def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dic
     if not is_google_sheet_configured(settings):
         return []
 
-    client = _build_gspread_client(settings)
-    workbook = client.open_by_key(settings.google_sheet_id)
+    workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(worksheet_name)
     return worksheet.get_all_records()
 
@@ -386,9 +426,9 @@ def update_proposal_master_record(
         sanitized_updates["status_code"] = status_code
     sanitized_updates["last_updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    client = _build_gspread_client(settings)
-    workbook = client.open_by_key(settings.google_sheet_id)
+    workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(settings.google_worksheet_proposal_master)
+    headers = [str(header).strip() for header in worksheet.row_values(1)]
     header_map, sanitized_updates = validate_proposal_master_edit_payload(
         settings=settings,
         worksheet=worksheet,
@@ -427,11 +467,12 @@ def update_proposal_master_record(
         raise RuntimeError("Editable columns were not found in PROPOSAL_MASTER.")
 
     worksheet.update_cells(cells, value_input_option="USER_ENTERED")
-    refreshed_records = worksheet.get_all_records()
-    pd.DataFrame(refreshed_records).to_csv(
-        cache_path_for_worksheet(settings.google_worksheet_proposal_master),
-        index=False,
-        encoding="utf-8-sig",
+    _update_cache_csv_row(
+        settings.google_worksheet_proposal_master,
+        headers,
+        "제안ID",
+        normalized_proposal_id,
+        applied_updates,
     )
     append_sync_log_entry(
         settings=settings,
@@ -488,10 +529,11 @@ def load_workbook_frames(settings: Settings, allow_empty: bool = False) -> dict[
             return {name: pd.DataFrame() for name in worksheet_names(settings)}
         raise RuntimeError("Google Sheet is not configured. Update `.env` before loading data.")
 
+    workbook = _open_workbook(settings)
     workbook_frames: dict[str, pd.DataFrame] = {}
     for sheet_name in worksheet_names(settings):
-        records = fetch_worksheet_records(settings, sheet_name)
-        workbook_frames[sheet_name] = pd.DataFrame(records)
+        worksheet = workbook.worksheet(sheet_name)
+        workbook_frames[sheet_name] = pd.DataFrame(worksheet.get_all_records())
     return workbook_frames
 
 
