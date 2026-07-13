@@ -1748,6 +1748,38 @@ def parse_editable_amount(value: str, label: str) -> float | None:
     return float(numeric)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def load_product_code_options() -> list[dict[str, str]]:
+    settings = load_settings()
+    load_result = load_live_or_cached_workbook_frames(settings)
+    product_df = load_result.workbook_frames.get(settings.google_worksheet_code_map_product, pd.DataFrame()).copy()
+    if product_df.empty:
+        return []
+
+    product_df.columns = [str(column).strip() for column in product_df.columns]
+    if "product_code" not in product_df.columns:
+        return []
+
+    if "is_active" in product_df.columns:
+        active_values = product_df["is_active"].fillna("").astype(str).str.upper().str.strip()
+        product_df = product_df[active_values.isin({"", "Y", "YES", "TRUE", "1"})]
+
+    if "display_order" in product_df.columns:
+        product_df["display_order"] = pd.to_numeric(product_df["display_order"], errors="coerce")
+        product_df = product_df.sort_values(by=["display_order", "product_code"], ascending=[True, True], na_position="last")
+    else:
+        product_df = product_df.sort_values(by=["product_code"], ascending=[True])
+
+    options: list[dict[str, str]] = []
+    for _, row in product_df.iterrows():
+        code = str(row.get("product_code", "")).strip()
+        name = str(row.get("product_name", "")).strip()
+        if not code:
+            continue
+        options.append({"code": code, "name": name})
+    return options
+
+
 def editing_proposal_keys() -> set[str]:
     keys = st.session_state.get("editing_proposal_keys")
     if not isinstance(keys, list):
@@ -1845,6 +1877,13 @@ def render_new_proposal_form() -> None:
     if isinstance(save_message, str) and save_message.strip():
         st.success(save_message)
 
+    product_options = load_product_code_options()
+    product_codes = [option["code"] for option in product_options]
+    product_labels = {
+        option["code"]: f'{option["code"]} | {option["name"]}' if option["name"] else option["code"]
+        for option in product_options
+    }
+
     with st.form("new_proposal_form", clear_on_submit=False):
         st.markdown("**신규 과제 추가**")
         st.caption("기본 정보와 핵심 관리 항목을 입력하면 Google Sheet에 신규 과제가 추가됩니다.")
@@ -1852,7 +1891,12 @@ def render_new_proposal_form() -> None:
         identity_cols = st.columns(4)
         business_name = identity_cols[0].text_input("사업명")
         project_name = identity_cols[1].text_input("과제명")
-        product_code = identity_cols[2].text_input("제품코드")
+        product_code = identity_cols[2].selectbox(
+            "제품코드",
+            options=product_codes if product_codes else [""],
+            index=0,
+            format_func=lambda value: product_labels.get(value, value or "선택 가능한 제품코드 없음"),
+        )
         owner = identity_cols[3].text_input("책임자")
 
         core_cols = st.columns(4)
@@ -1983,7 +2027,7 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
         )
 
     st.divider()
-    action_cols = st.columns([0.12, 0.15, 0.73], vertical_alignment="center")
+    action_cols = st.columns([0.12, 0.88], vertical_alignment="center")
     editing_keys = editing_proposal_keys()
     is_editing = row_key in editing_keys
     edit_label = "수정 닫기" if is_editing else "수정"
@@ -1993,9 +2037,6 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
         else:
             editing_keys.add(row_key)
         set_editing_proposal_keys(editing_keys)
-        st.rerun()
-    if action_cols[1].button("신규 과제 추가", key=f"new_from_{row_key}", use_container_width=True):
-        set_new_proposal_form_open(not new_proposal_form_open())
         st.rerun()
 
     if is_editing:
