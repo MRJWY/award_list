@@ -1752,6 +1752,10 @@ def render_detail_field(label: str, value: str) -> None:
     st.write(value)
 
 
+def render_detail_section_heading(title: str) -> None:
+    st.markdown(f"**{title}**")
+
+
 def format_amount_input_value(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
@@ -1799,67 +1803,18 @@ def set_new_proposal_form_open(is_open: bool) -> None:
     st.session_state["show_new_proposal_form"] = bool(is_open)
 
 
-def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
+def save_proposal_edit(row: pd.Series, row_key: str, payload: dict[str, object]) -> bool:
     proposal_id = str(row.get("proposal_id", "")).strip()
     if not proposal_id:
         st.info("제안ID가 없는 항목은 여기서 수정할 수 없습니다.")
-        return
-
-    save_message = st.session_state.get("proposal_save_message")
-    if isinstance(save_message, dict) and save_message.get("proposal_id") == proposal_id:
-        st.success(str(save_message.get("message", "저장되었습니다.")))
-
-    current_status = str(row.get("status_name", "")).strip() or "미입력"
-    current_awarded = str(row.get("awarded_yn", "")).strip().upper()
-    awarded_options = ["", "Y", "N"]
-    awarded_index = awarded_options.index(current_awarded) if current_awarded in awarded_options else 0
-    status_options = editable_status_options(current_status)
-    status_index = status_options.index(current_status) if current_status in status_options else 0
-
-    with st.form(f"proposal_edit_form_{row_key}", clear_on_submit=False):
-        st.markdown("**수정 폼**")
-        st.caption("상태, 책임자, 수주여부, 부처, 비고, 금액만 수정할 수 있습니다. 금액은 천원 단위입니다.")
-
-        top_cols = st.columns(4)
-        edited_status = top_cols[0].selectbox("상태", status_options, index=status_index)
-        edited_owner = top_cols[1].text_input("책임자", value=str(row.get("owner", "")).strip())
-        edited_awarded = top_cols[2].selectbox(
-            "수주여부",
-            awarded_options,
-            index=awarded_index,
-            format_func=lambda value: {"": "미입력", "Y": "Y", "N": "N"}.get(value, value),
-        )
-        edited_ministry = top_cols[3].text_input("부처", value=str(row.get("ministry", "")).strip())
-
-        amount_cols = st.columns(4)
-        edited_total_cost = amount_cols[0].text_input("총사업비(천원)", value=format_amount_input_value(row.get("total_project_cost_kkrw")))
-        edited_government = amount_cols[1].text_input("정부지원금(천원)", value=format_amount_input_value(row.get("government_funding_kkrw")))
-        edited_private_cash = amount_cols[2].text_input("민간부담금(현금, 천원)", value=format_amount_input_value(row.get("private_cash_kkrw")))
-        edited_private_kind = amount_cols[3].text_input("민간부담금(현물, 천원)", value=format_amount_input_value(row.get("private_in_kind_kkrw")))
-
-        edited_notes = st.text_area("비고", value=str(row.get("notes", "")).strip(), height=120)
-        submitted = st.form_submit_button("저장", use_container_width=False)
-
-    if not submitted:
-        return
+        return False
 
     try:
-        payload = {
-            "status_name": edited_status,
-            "owner": edited_owner,
-            "awarded_yn": edited_awarded,
-            "ministry": edited_ministry,
-            "notes": edited_notes,
-            "total_project_cost_kkrw": parse_editable_amount(edited_total_cost, "총사업비"),
-            "government_funding_kkrw": parse_editable_amount(edited_government, "정부지원금"),
-            "private_cash_kkrw": parse_editable_amount(edited_private_cash, "민간부담금(현금)"),
-            "private_in_kind_kkrw": parse_editable_amount(edited_private_kind, "민간부담금(현물)"),
-        }
         settings = load_settings()
         update_proposal_master_record(settings, proposal_id, payload)
     except Exception as exc:
         st.error(f"저장 중 오류가 발생했습니다: {exc}")
-        return
+        return False
 
     st.cache_data.clear()
     st.session_state["proposal_save_message"] = {
@@ -1869,7 +1824,7 @@ def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
     editing_keys = editing_proposal_keys()
     editing_keys.discard(row_key)
     set_editing_proposal_keys(editing_keys)
-    st.rerun()
+    return True
 
 
 def render_new_proposal_form(product_options: list[dict[str, str]]) -> None:
@@ -1970,8 +1925,10 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
     awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
     awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
     d_day_text, _ = format_d_day(row.get("days_to_deadline"))
+    editing_keys = editing_proposal_keys()
+    is_editing = row_key in editing_keys
 
-    header_cols = st.columns([0.82, 0.18], vertical_alignment="center")
+    header_cols = st.columns([0.70, 0.14, 0.16], vertical_alignment="center")
     with header_cols[0]:
         st.caption(str(row.get("business_name", "")).strip() or "-")
         st.markdown(f"**{str(row.get('project_name', '')).strip() or '-'}**")
@@ -1980,64 +1937,9 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
             f"<div style='text-align:right;'><span class='status-pill {status_pill_class(status_name)}'>{html.escape(status_name)}</span></div>",
             unsafe_allow_html=True,
         )
-    editing_keys = editing_proposal_keys()
-    is_editing = row_key in editing_keys
-    notes_value = str(row.get("notes", "")).strip()
-
-    info_tab, schedule_tab, budget_tab, notes_tab = st.tabs(["기본 정보", "일정 / 상태", "금액", "비고 / 수정"])
-
-    with info_tab:
-        info_cols = st.columns(5)
-        info_items = [
-            ("제안ID", str(row.get("proposal_id", "")).strip() or "-"),
-            ("주제", str(row.get("topic", "")).strip() or "-"),
-            ("부처", str(row.get("ministry", "")).strip() or "-"),
-            ("기관", str(row.get("agency", "")).strip() or "-"),
-            ("담당자", str(row.get("owner", "")).strip() or "-"),
-        ]
-        for column, (label, value) in zip(info_cols, info_items):
-            with column:
-                render_detail_field(label, value)
-
-    with schedule_tab:
-        extra_cols = st.columns(5)
-        extra_items = [
-            ("협력기관", str(row.get("partner", "")).strip() or "-"),
-            ("마감일", format_deadline(row.get("submission_deadline"))),
-            ("D-Day", d_day_text),
-            ("수주여부", awarded_text),
-            ("최종수정", format_timestamp(row.get("last_updated_at"))),
-        ]
-        for column, (label, value) in zip(extra_cols, extra_items):
-            with column:
-                render_detail_field(label, value)
-
-    with budget_tab:
-        amount_cols = st.columns(4)
-        amount_items = [
-            ("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw"))),
-            ("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw"))),
-            ("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw"))),
-            ("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw"))),
-        ]
-        for column, (label, value) in zip(amount_cols, amount_items):
-            with column:
-                render_detail_field(label, value)
-
-    with notes_tab:
-        st.markdown("**비고**")
-        if notes_value:
-            st.markdown(
-                f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.caption("입력된 비고가 없습니다.")
-
-        st.divider()
-        action_cols = st.columns([0.16, 0.84], vertical_alignment="center")
-        edit_label = "수정 닫기" if is_editing else "수정"
-        if action_cols[0].button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
+    with header_cols[2]:
+        edit_label = "수정 취소" if is_editing else "수정"
+        if st.button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
             if is_editing:
                 editing_keys.discard(row_key)
             else:
@@ -2045,8 +1947,145 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
             set_editing_proposal_keys(editing_keys)
             st.rerun()
 
+    notes_value = str(row.get("notes", "")).strip()
+    save_message = st.session_state.get("proposal_save_message")
+    if isinstance(save_message, dict) and save_message.get("proposal_id") == str(row.get("proposal_id", "")).strip():
+        st.success(str(save_message.get("message", "저장되었습니다.")))
+
+    current_awarded = str(row.get("awarded_yn", "")).strip().upper()
+    awarded_options = ["", "Y", "N"]
+    awarded_index = awarded_options.index(current_awarded) if current_awarded in awarded_options else 0
+    status_options = editable_status_options(status_name)
+    status_index = status_options.index(status_name) if status_name in status_options else 0
+
+    def render_inline_sections() -> dict[str, object] | None:
+        render_detail_section_heading("기본 정보")
+        info_cols = st.columns(5)
+        with info_cols[0]:
+            render_detail_field("제안ID", str(row.get("proposal_id", "")).strip() or "-")
+        with info_cols[1]:
+            render_detail_field("주제", str(row.get("topic", "")).strip() or "-")
+        with info_cols[2]:
+            if is_editing:
+                edited_ministry = st.text_input("부처", value=str(row.get("ministry", "")).strip(), key=f"edit_ministry_{row_key}")
+            else:
+                edited_ministry = str(row.get("ministry", "")).strip()
+                render_detail_field("부처", edited_ministry or "-")
+        with info_cols[3]:
+            render_detail_field("기관", str(row.get("agency", "")).strip() or "-")
+        with info_cols[4]:
+            if is_editing:
+                edited_owner = st.text_input("담당자", value=str(row.get("owner", "")).strip(), key=f"edit_owner_{row_key}")
+            else:
+                edited_owner = str(row.get("owner", "")).strip()
+                render_detail_field("담당자", edited_owner or "-")
+
+        st.divider()
+        render_detail_section_heading("일정 / 상태")
+        schedule_cols = st.columns(5)
+        with schedule_cols[0]:
+            render_detail_field("협력기관", str(row.get("partner", "")).strip() or "-")
+        with schedule_cols[1]:
+            render_detail_field("마감일", format_deadline(row.get("submission_deadline")))
+        with schedule_cols[2]:
+            render_detail_field("D-Day", d_day_text)
+        with schedule_cols[3]:
+            if is_editing:
+                edited_awarded = st.selectbox(
+                    "수주여부",
+                    awarded_options,
+                    index=awarded_index,
+                    key=f"edit_awarded_{row_key}",
+                    format_func=lambda value: {"": "미입력", "Y": "Y", "N": "N"}.get(value, value),
+                )
+            else:
+                edited_awarded = current_awarded
+                render_detail_field("수주여부", awarded_text)
+        with schedule_cols[4]:
+            if is_editing:
+                edited_status = st.selectbox("상태", status_options, index=status_index, key=f"edit_status_{row_key}")
+            else:
+                edited_status = status_name
+                render_detail_field("상태", status_name)
+
+        st.caption(f"최종수정 {format_timestamp(row.get('last_updated_at'))}")
+
+        st.divider()
+        render_detail_section_heading("금액")
+        amount_cols = st.columns(4)
+        with amount_cols[0]:
+            if is_editing:
+                edited_total_cost = st.text_input("총사업비(천원)", value=format_amount_input_value(row.get("total_project_cost_kkrw")), key=f"edit_total_{row_key}")
+            else:
+                edited_total_cost = format_amount_input_value(row.get("total_project_cost_kkrw"))
+                render_detail_field("총사업비", format_kkrw_amount_with_eok(row.get("total_project_cost_kkrw")))
+        with amount_cols[1]:
+            if is_editing:
+                edited_government = st.text_input("정부지원금(천원)", value=format_amount_input_value(row.get("government_funding_kkrw")), key=f"edit_gov_{row_key}")
+            else:
+                edited_government = format_amount_input_value(row.get("government_funding_kkrw"))
+                render_detail_field("정부지원금", format_kkrw_amount_with_eok(row.get("government_funding_kkrw")))
+        with amount_cols[2]:
+            if is_editing:
+                edited_private_cash = st.text_input("민간부담금(현금, 천원)", value=format_amount_input_value(row.get("private_cash_kkrw")), key=f"edit_cash_{row_key}")
+            else:
+                edited_private_cash = format_amount_input_value(row.get("private_cash_kkrw"))
+                render_detail_field("민간부담금(현금)", format_kkrw_amount_with_eok(row.get("private_cash_kkrw")))
+        with amount_cols[3]:
+            if is_editing:
+                edited_private_kind = st.text_input("민간부담금(현물, 천원)", value=format_amount_input_value(row.get("private_in_kind_kkrw")), key=f"edit_kind_{row_key}")
+            else:
+                edited_private_kind = format_amount_input_value(row.get("private_in_kind_kkrw"))
+                render_detail_field("민간부담금(현물)", format_kkrw_amount_with_eok(row.get("private_in_kind_kkrw")))
+
+        st.divider()
+        render_detail_section_heading("비고")
         if is_editing:
-            render_proposal_edit_form(row, row_key)
+            edited_notes = st.text_area("비고", value=notes_value, height=120, key=f"edit_notes_{row_key}", label_visibility="collapsed")
+        elif notes_value:
+            edited_notes = notes_value
+            st.markdown(
+                f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            edited_notes = ""
+            st.caption("입력된 비고가 없습니다.")
+
+        if not is_editing:
+            return None
+
+        return {
+            "status_name": edited_status,
+            "owner": edited_owner,
+            "awarded_yn": edited_awarded,
+            "ministry": edited_ministry,
+            "notes": edited_notes,
+            "total_project_cost_kkrw": parse_editable_amount(edited_total_cost, "총사업비"),
+            "government_funding_kkrw": parse_editable_amount(edited_government, "정부지원금"),
+            "private_cash_kkrw": parse_editable_amount(edited_private_cash, "민간부담금(현금)"),
+            "private_in_kind_kkrw": parse_editable_amount(edited_private_kind, "민간부담금(현물)"),
+        }
+
+    if is_editing:
+        with st.form(f"proposal_inline_edit_form_{row_key}", clear_on_submit=False):
+            try:
+                payload = render_inline_sections()
+            except ValueError as exc:
+                st.error(str(exc))
+                payload = None
+            action_cols = st.columns([0.14, 0.14, 0.72], vertical_alignment="center")
+            submitted = action_cols[0].form_submit_button("저장", use_container_width=True)
+            cancelled = action_cols[1].form_submit_button("취소", use_container_width=True)
+        if cancelled:
+            editing_keys.discard(row_key)
+            set_editing_proposal_keys(editing_keys)
+            st.rerun()
+        if submitted and payload is not None:
+            if save_proposal_edit(row, row_key, payload):
+                st.rerun()
+    else:
+        render_inline_sections()
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
