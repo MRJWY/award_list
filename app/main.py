@@ -28,6 +28,7 @@ from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_ma
 from integrations.google_sheets import (
     WorkbookLoadResult,
     build_google_sheet_diagnostics,
+    create_proposal_master_record,
     load_live_or_cached_workbook_frames,
     resolve_workbook_update_timestamp,
     update_proposal_master_record,
@@ -1747,6 +1748,25 @@ def parse_editable_amount(value: str, label: str) -> float | None:
     return float(numeric)
 
 
+def editing_proposal_keys() -> set[str]:
+    keys = st.session_state.get("editing_proposal_keys")
+    if not isinstance(keys, list):
+        return set()
+    return {str(key) for key in keys}
+
+
+def set_editing_proposal_keys(keys: set[str]) -> None:
+    st.session_state["editing_proposal_keys"] = sorted(keys)
+
+
+def new_proposal_form_open() -> bool:
+    return bool(st.session_state.get("show_new_proposal_form"))
+
+
+def set_new_proposal_form_open(is_open: bool) -> None:
+    st.session_state["show_new_proposal_form"] = bool(is_open)
+
+
 def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
     proposal_id = str(row.get("proposal_id", "")).strip()
     if not proposal_id:
@@ -1814,6 +1834,91 @@ def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
         "proposal_id": proposal_id,
         "message": f"{proposal_id} 항목을 Google Sheet에 저장했습니다.",
     }
+    editing_keys = editing_proposal_keys()
+    editing_keys.discard(row_key)
+    set_editing_proposal_keys(editing_keys)
+    st.rerun()
+
+
+def render_new_proposal_form() -> None:
+    save_message = st.session_state.get("proposal_create_message")
+    if isinstance(save_message, str) and save_message.strip():
+        st.success(save_message)
+
+    with st.form("new_proposal_form", clear_on_submit=False):
+        st.markdown("**신규 과제 추가**")
+        st.caption("기본 정보와 핵심 관리 항목을 입력하면 Google Sheet에 신규 과제가 추가됩니다.")
+
+        identity_cols = st.columns(4)
+        business_name = identity_cols[0].text_input("사업명")
+        project_name = identity_cols[1].text_input("과제명")
+        product_code = identity_cols[2].text_input("제품코드")
+        owner = identity_cols[3].text_input("책임자")
+
+        core_cols = st.columns(4)
+        status_name = core_cols[0].selectbox("상태", EDITABLE_STATUS_OPTIONS, index=0)
+        submission_deadline = core_cols[1].text_input("마감일", placeholder="2026-07-31")
+        awarded_yn = core_cols[2].selectbox(
+            "수주여부",
+            ["", "Y", "N"],
+            index=0,
+            format_func=lambda value: {"": "미입력", "Y": "Y", "N": "N"}.get(value, value),
+        )
+        ministry = core_cols[3].text_input("부처")
+
+        detail_cols = st.columns(4)
+        agency = detail_cols[0].text_input("기관")
+        partner = detail_cols[1].text_input("협력기관")
+        topic = detail_cols[2].text_input("주제")
+        _ = detail_cols[3].empty()
+
+        amount_cols = st.columns(4)
+        total_cost = amount_cols[0].text_input("총사업비(천원)")
+        government_funding = amount_cols[1].text_input("정부지원금(천원)")
+        private_cash = amount_cols[2].text_input("민간부담금(현금, 천원)")
+        private_in_kind = amount_cols[3].text_input("민간부담금(현물, 천원)")
+
+        notes = st.text_area("비고", height=120)
+        submitted = st.form_submit_button("신규 과제 저장", use_container_width=False)
+
+    if not submitted:
+        return
+
+    try:
+        payload = {
+            "business_name": business_name,
+            "project_name": project_name,
+            "product_code": product_code,
+            "topic": topic,
+            "ministry": ministry,
+            "agency": agency,
+            "status_name": status_name,
+            "submission_deadline": submission_deadline,
+            "awarded_yn": awarded_yn,
+            "total_project_cost_kkrw": parse_editable_amount(total_cost, "총사업비"),
+            "government_funding_kkrw": parse_editable_amount(government_funding, "정부지원금"),
+            "private_cash_kkrw": parse_editable_amount(private_cash, "민간부담금(현금)"),
+            "private_in_kind_kkrw": parse_editable_amount(private_in_kind, "민간부담금(현물)"),
+            "owner": owner,
+            "partner": partner,
+            "notes": notes,
+        }
+        settings = load_settings()
+        created_record = create_proposal_master_record(settings, payload)
+    except Exception as exc:
+        st.error(f"신규 과제 저장 중 오류가 발생했습니다: {exc}")
+        return
+
+    created_proposal_id = str(created_record.get("proposal_id", "")).strip()
+    st.cache_data.clear()
+    st.session_state["proposal_create_message"] = (
+        f"{created_proposal_id or '신규 과제'}가 Google Sheet에 추가되었습니다."
+    )
+    set_new_proposal_form_open(False)
+    if created_proposal_id:
+        open_keys = expanded_proposal_keys()
+        open_keys.add(created_proposal_id)
+        set_expanded_proposal_keys(open_keys)
     st.rerun()
 
 
@@ -1878,7 +1983,23 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
         )
 
     st.divider()
-    render_proposal_edit_form(row, row_key)
+    action_cols = st.columns([0.12, 0.15, 0.73], vertical_alignment="center")
+    editing_keys = editing_proposal_keys()
+    is_editing = row_key in editing_keys
+    edit_label = "수정 닫기" if is_editing else "수정"
+    if action_cols[0].button(edit_label, key=f"edit_toggle_{row_key}", use_container_width=True):
+        if is_editing:
+            editing_keys.discard(row_key)
+        else:
+            editing_keys.add(row_key)
+        set_editing_proposal_keys(editing_keys)
+        st.rerun()
+    if action_cols[1].button("신규 과제 추가", key=f"new_from_{row_key}", use_container_width=True):
+        set_new_proposal_form_open(not new_proposal_form_open())
+        st.rerun()
+
+    if is_editing:
+        render_proposal_edit_form(row, row_key)
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -2182,15 +2303,24 @@ def render_detail_section(df: pd.DataFrame) -> None:
     detail_df = prepare_detail_display_rows(df)
     if "expanded_proposal_keys" not in st.session_state:
         st.session_state["expanded_proposal_keys"] = []
+    if "editing_proposal_keys" not in st.session_state:
+        st.session_state["editing_proposal_keys"] = []
+    if "show_new_proposal_form" not in st.session_state:
+        st.session_state["show_new_proposal_form"] = False
 
     st.markdown("#### 과제 카드")
-    action_cols = st.columns([0.12, 0.12, 0.76], vertical_alignment="center")
+    action_cols = st.columns([0.12, 0.12, 0.16, 0.60], vertical_alignment="center")
     if action_cols[0].button("전체 펼치기", use_container_width=True):
         set_expanded_proposal_keys({proposal_row_key(row, idx) for idx, (_, row) in enumerate(detail_df.iterrows())})
         st.rerun()
     if action_cols[1].button("전체 접기", use_container_width=True):
         set_expanded_proposal_keys(set())
         st.rerun()
+    if action_cols[2].button("신규 과제 추가", use_container_width=True):
+        set_new_proposal_form_open(not new_proposal_form_open())
+        st.rerun()
+    if new_proposal_form_open():
+        render_new_proposal_form()
     detail_container = st.container(border=False)
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):

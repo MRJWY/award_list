@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
@@ -9,7 +10,7 @@ from uuid import uuid4
 import pandas as pd
 
 from core.settings import ROOT_DIR, Settings
-from core.transforms import PROPOSAL_MASTER_COLUMN_ALIASES, normalize_text, normalize_yn_flag
+from core.transforms import PROPOSAL_MASTER_COLUMN_ALIASES, PROPOSAL_MASTER_COLUMNS, normalize_text, normalize_yn_flag
 
 
 def is_google_sheet_configured(settings: Settings) -> bool:
@@ -208,6 +209,138 @@ def append_sync_log_entry(
         index=False,
         encoding="utf-8-sig",
     )
+
+
+def generate_next_proposal_id(worksheet) -> str:
+    headers = worksheet.row_values(1)
+    header_map = _proposal_master_header_index_map(headers)
+    proposal_id_col = header_map.get("proposal_id")
+    if proposal_id_col is None:
+        raise RuntimeError("`proposal_id` column was not found in PROPOSAL_MASTER.")
+
+    current_year = datetime.now().year
+    proposal_ids = worksheet.col_values(proposal_id_col)[1:]
+    pattern = re.compile(r"^PROP-(\d{4})-(\d+)$", re.IGNORECASE)
+    max_sequence = 0
+    for raw_value in proposal_ids:
+        match = pattern.match(normalize_text(raw_value))
+        if not match:
+            continue
+        proposal_year = int(match.group(1))
+        proposal_sequence = int(match.group(2))
+        if proposal_year == current_year:
+            max_sequence = max(max_sequence, proposal_sequence)
+    return f"PROP-{current_year}-{max_sequence + 1:03d}"
+
+
+def create_proposal_master_record(
+    settings: Settings,
+    payload: dict[str, object],
+) -> dict[str, str]:
+    if not is_google_sheet_configured(settings):
+        raise RuntimeError("Google Sheet is not configured.")
+
+    client = _build_gspread_client(settings)
+    workbook = client.open_by_key(settings.google_sheet_id)
+    worksheet = workbook.worksheet(settings.google_worksheet_proposal_master)
+    headers = [str(header).strip() for header in worksheet.row_values(1)]
+    header_map = _proposal_master_header_index_map(headers)
+
+    required_columns = {
+        "proposal_id",
+        "business_name",
+        "project_name",
+        "status_code",
+        "status_name",
+        "submission_deadline",
+        "awarded_yn",
+        "owner",
+        "last_updated_at",
+    }
+    missing_columns = sorted(column for column in required_columns if column not in header_map)
+    if missing_columns:
+        raise RuntimeError(f"PROPOSAL_MASTER에 필요한 컬럼이 없습니다: {', '.join(missing_columns)}")
+
+    status_map = _status_name_to_code_map(settings)
+    status_name = normalize_text(payload.get("status_name"))
+    if not status_name:
+        raise ValueError("상태는 필수입니다.")
+    if status_name not in status_map:
+        raise ValueError(f"상태값 `{status_name}` 이 CODE_MAP_STATUS에 없습니다.")
+
+    business_name = normalize_text(payload.get("business_name"))
+    project_name = normalize_text(payload.get("project_name"))
+    if not business_name:
+        raise ValueError("사업명은 필수입니다.")
+    if not project_name:
+        raise ValueError("과제명은 필수입니다.")
+
+    submission_deadline = normalize_text(payload.get("submission_deadline"))
+    if not submission_deadline:
+        raise ValueError("마감일은 필수입니다.")
+    parsed_deadline = pd.to_datetime(submission_deadline, errors="coerce")
+    if pd.isna(parsed_deadline):
+        raise ValueError("마감일은 YYYY-MM-DD 형식으로 입력해 주세요.")
+
+    awarded_flag = normalize_yn_flag(payload.get("awarded_yn"))
+    if awarded_flag not in {"", "Y", "N"}:
+        raise ValueError("수주여부는 Y, N 또는 빈값만 입력할 수 있습니다.")
+
+    proposal_id = generate_next_proposal_id(worksheet)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    normalized_payload: dict[str, object] = {column: "" for column in PROPOSAL_MASTER_COLUMNS}
+    normalized_payload.update(
+        {
+            "proposal_id": proposal_id,
+            "business_name": business_name,
+            "project_name": project_name,
+            "product_code": normalize_text(payload.get("product_code")),
+            "topic": normalize_text(payload.get("topic")),
+            "ministry": normalize_text(payload.get("ministry")),
+            "agency": normalize_text(payload.get("agency")),
+            "status_code": status_map[status_name],
+            "status_name": status_name,
+            "submission_deadline": parsed_deadline.strftime("%Y-%m-%d"),
+            "awarded_yn": awarded_flag,
+            "owner": normalize_text(payload.get("owner")),
+            "partner": normalize_text(payload.get("partner")),
+            "notes": normalize_text(payload.get("notes")),
+            "last_updated_at": timestamp,
+        }
+    )
+    for amount_column in [
+        "total_project_cost_kkrw",
+        "government_funding_kkrw",
+        "private_cash_kkrw",
+        "private_in_kind_kkrw",
+    ]:
+        normalized_payload[amount_column] = payload.get(amount_column)
+
+    row_values: list[str] = []
+    applied_values: dict[str, str] = {}
+    for header in headers:
+        canonical = PROPOSAL_MASTER_COLUMN_ALIASES.get(header, header)
+        raw_value = normalized_payload.get(str(canonical), "")
+        serialized_value = _serialize_update_value(str(canonical), raw_value)
+        row_values.append(serialized_value)
+        if str(canonical) in PROPOSAL_MASTER_COLUMNS and serialized_value:
+            applied_values[str(canonical)] = serialized_value
+
+    worksheet.append_row(row_values, value_input_option="USER_ENTERED")
+    refreshed_records = worksheet.get_all_records()
+    pd.DataFrame(refreshed_records).to_csv(
+        cache_path_for_worksheet(settings.google_worksheet_proposal_master),
+        index=False,
+        encoding="utf-8-sig",
+    )
+    append_sync_log_entry(
+        settings=settings,
+        action="MANUAL_CREATE",
+        source_sheet=settings.google_worksheet_proposal_master,
+        message=f"{proposal_id} created: {project_name}",
+        row_count=1,
+    )
+    return applied_values
 
 
 def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dict[str, object]]:
