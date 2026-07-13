@@ -3,10 +3,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from datetime import datetime
+from uuid import uuid4
 
 import pandas as pd
 
 from core.settings import ROOT_DIR, Settings
+from core.transforms import PROPOSAL_MASTER_COLUMN_ALIASES, normalize_text, normalize_yn_flag
 
 
 def is_google_sheet_configured(settings: Settings) -> bool:
@@ -57,10 +60,7 @@ def _service_account_path(settings: Settings) -> Path:
     return ROOT_DIR / raw_path
 
 
-def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dict[str, object]]:
-    if not is_google_sheet_configured(settings):
-        return []
-
+def _build_gspread_client(settings: Settings):
     try:
         import gspread
     except ImportError as exc:
@@ -71,16 +71,243 @@ def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dic
             service_account_info = json.loads(settings.google_service_account_json)
         except json.JSONDecodeError as exc:
             raise RuntimeError("`GOOGLE_SERVICE_ACCOUNT_JSON` is not valid JSON.") from exc
-        client = gspread.service_account_from_dict(service_account_info)
-    else:
-        service_account_path = _service_account_path(settings)
-        if not service_account_path.exists():
-            raise FileNotFoundError(f"Service account file not found: {service_account_path}")
-        client = gspread.service_account(filename=str(service_account_path))
+        return gspread.service_account_from_dict(service_account_info)
 
+    service_account_path = _service_account_path(settings)
+    if not service_account_path.exists():
+        raise FileNotFoundError(f"Service account file not found: {service_account_path}")
+    return gspread.service_account(filename=str(service_account_path))
+
+
+def _proposal_master_header_index_map(headers: list[object]) -> dict[str, int]:
+    header_map: dict[str, int] = {}
+    for index, raw_header in enumerate(headers, start=1):
+        header = str(raw_header).strip()
+        canonical = PROPOSAL_MASTER_COLUMN_ALIASES.get(header, header)
+        if canonical:
+            header_map[str(canonical)] = index
+    return header_map
+
+
+def _serialize_update_value(column: str, value: object) -> str:
+    if column in {
+        "total_project_cost_kkrw",
+        "government_funding_kkrw",
+        "private_cash_kkrw",
+        "private_in_kind_kkrw",
+    }:
+        normalized = normalize_text(value)
+        if not normalized:
+            return ""
+        numeric = pd.to_numeric(pd.Series([normalized]), errors="coerce").iloc[0]
+        if pd.isna(numeric):
+            raise ValueError(f"`{column}` must be numeric.")
+        if float(numeric).is_integer():
+            return str(int(numeric))
+        return str(float(numeric))
+
+    if column == "awarded_yn":
+        return normalize_yn_flag(value)
+
+    if column == "last_updated_at":
+        return normalize_text(value) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return normalize_text(value)
+
+
+def _status_name_to_code_map(settings: Settings) -> dict[str, str]:
+    status_records = fetch_worksheet_records(settings, settings.google_worksheet_code_map_status)
+    status_df = pd.DataFrame(status_records)
+    if status_df.empty or "status_name" not in status_df.columns or "status_code" not in status_df.columns:
+        return {}
+
+    return {
+        normalize_text(row.get("status_name")): normalize_text(row.get("status_code")).upper()
+        for _, row in status_df.iterrows()
+        if normalize_text(row.get("status_name"))
+    }
+
+
+def validate_proposal_master_edit_payload(
+    settings: Settings,
+    worksheet,
+    proposal_id: str,
+    updates: dict[str, object],
+) -> tuple[dict[str, int], dict[str, object]]:
+    normalized_proposal_id = normalize_text(proposal_id)
+    if not normalized_proposal_id:
+        raise ValueError("`proposal_id` is required.")
+
+    headers = worksheet.row_values(1)
+    header_map = _proposal_master_header_index_map(headers)
+    required_columns = {
+        "proposal_id",
+        "status_code",
+        "status_name",
+        "awarded_yn",
+        "ministry",
+        "owner",
+        "notes",
+        "total_project_cost_kkrw",
+        "government_funding_kkrw",
+        "private_cash_kkrw",
+        "private_in_kind_kkrw",
+        "last_updated_at",
+    }
+    missing_columns = sorted(column for column in required_columns if column not in header_map)
+    if missing_columns:
+        raise RuntimeError(f"PROPOSAL_MASTER에 필요한 컬럼이 없습니다: {', '.join(missing_columns)}")
+
+    validated_updates = dict(updates)
+    if "status_name" in validated_updates:
+        status_name = normalize_text(validated_updates["status_name"])
+        if status_name:
+            status_map = _status_name_to_code_map(settings)
+            if status_name not in status_map:
+                raise ValueError(f"상태값 `{status_name}` 이 CODE_MAP_STATUS에 없습니다.")
+            validated_updates["status_name"] = status_name
+            validated_updates["status_code"] = status_map[status_name]
+
+    awarded_flag = normalize_yn_flag(validated_updates.get("awarded_yn"))
+    if awarded_flag not in {"", "Y", "N"}:
+        raise ValueError("수주여부는 Y, N 또는 빈값만 입력할 수 있습니다.")
+    if "awarded_yn" in validated_updates:
+        validated_updates["awarded_yn"] = awarded_flag
+
+    return header_map, validated_updates
+
+
+def append_sync_log_entry(
+    settings: Settings,
+    action: str,
+    source_sheet: str,
+    message: str,
+    row_count: int = 1,
+) -> None:
+    client = _build_gspread_client(settings)
+    workbook = client.open_by_key(settings.google_sheet_id)
+    worksheet = workbook.worksheet(settings.google_worksheet_sync_log)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    payload = {
+        "run_id": f"manual-edit-{uuid4().hex[:12]}",
+        "run_type": action,
+        "source_sheet": source_sheet,
+        "started_at": timestamp,
+        "finished_at": timestamp,
+        "rows_read": str(row_count),
+        "rows_valid": str(row_count),
+        "rows_error": "0",
+        "message": message,
+    }
+    headers = [str(header).strip() for header in worksheet.row_values(1)]
+    row_values = [payload.get(header, "") for header in headers]
+    worksheet.append_row(row_values, value_input_option="USER_ENTERED")
+    refreshed_records = worksheet.get_all_records()
+    pd.DataFrame(refreshed_records).to_csv(
+        cache_path_for_worksheet(settings.google_worksheet_sync_log),
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+
+def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dict[str, object]]:
+    if not is_google_sheet_configured(settings):
+        return []
+
+    client = _build_gspread_client(settings)
     workbook = client.open_by_key(settings.google_sheet_id)
     worksheet = workbook.worksheet(worksheet_name)
     return worksheet.get_all_records()
+
+
+def update_proposal_master_record(
+    settings: Settings,
+    proposal_id: str,
+    updates: dict[str, object],
+) -> dict[str, str]:
+    normalized_proposal_id = normalize_text(proposal_id)
+    if not normalized_proposal_id:
+        raise ValueError("`proposal_id` is required.")
+    if not is_google_sheet_configured(settings):
+        raise RuntimeError("Google Sheet is not configured.")
+
+    allowed_columns = {
+        "status_code",
+        "status_name",
+        "awarded_yn",
+        "ministry",
+        "owner",
+        "notes",
+        "total_project_cost_kkrw",
+        "government_funding_kkrw",
+        "private_cash_kkrw",
+        "private_in_kind_kkrw",
+        "last_updated_at",
+    }
+    sanitized_updates = {column: value for column, value in updates.items() if column in allowed_columns}
+    if not sanitized_updates:
+        raise ValueError("No editable fields were provided.")
+
+    if "status_name" in sanitized_updates and "status_code" not in sanitized_updates:
+        status_code = _status_name_to_code_map(settings).get(normalize_text(sanitized_updates["status_name"]), "")
+        sanitized_updates["status_code"] = status_code
+    sanitized_updates["last_updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    client = _build_gspread_client(settings)
+    workbook = client.open_by_key(settings.google_sheet_id)
+    worksheet = workbook.worksheet(settings.google_worksheet_proposal_master)
+    header_map, sanitized_updates = validate_proposal_master_edit_payload(
+        settings=settings,
+        worksheet=worksheet,
+        proposal_id=normalized_proposal_id,
+        updates=sanitized_updates,
+    )
+    proposal_id_col = header_map.get("proposal_id")
+    if proposal_id_col is None:
+        raise RuntimeError("`proposal_id` column was not found in PROPOSAL_MASTER.")
+
+    proposal_ids = worksheet.col_values(proposal_id_col)
+    target_row_index: int | None = None
+    for row_index, cell_value in enumerate(proposal_ids[1:], start=2):
+        if normalize_text(cell_value) == normalized_proposal_id:
+            target_row_index = row_index
+            break
+    if target_row_index is None:
+        raise KeyError(f"Proposal not found: {normalized_proposal_id}")
+
+    try:
+        import gspread
+    except ImportError as exc:
+        raise RuntimeError("`gspread` is not installed. Run `pip install -r requirements.txt`.") from exc
+
+    cells: list[object] = []
+    applied_updates: dict[str, str] = {}
+    for column, raw_value in sanitized_updates.items():
+        column_index = header_map.get(column)
+        if column_index is None:
+            continue
+        serialized_value = _serialize_update_value(column, raw_value)
+        cells.append(gspread.Cell(target_row_index, column_index, serialized_value))
+        applied_updates[column] = serialized_value
+
+    if not cells:
+        raise RuntimeError("Editable columns were not found in PROPOSAL_MASTER.")
+
+    worksheet.update_cells(cells, value_input_option="USER_ENTERED")
+    refreshed_records = worksheet.get_all_records()
+    pd.DataFrame(refreshed_records).to_csv(
+        cache_path_for_worksheet(settings.google_worksheet_proposal_master),
+        index=False,
+        encoding="utf-8-sig",
+    )
+    append_sync_log_entry(
+        settings=settings,
+        action="MANUAL_EDIT",
+        source_sheet=settings.google_worksheet_proposal_master,
+        message=f"{normalized_proposal_id} updated: {', '.join(sorted(applied_updates))}",
+        row_count=1,
+    )
+    return applied_updates
 
 
 def worksheet_names(settings: Settings) -> list[str]:

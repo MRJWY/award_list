@@ -30,6 +30,7 @@ from integrations.google_sheets import (
     build_google_sheet_diagnostics,
     load_live_or_cached_workbook_frames,
     resolve_workbook_update_timestamp,
+    update_proposal_master_record,
 )
 
 
@@ -60,6 +61,22 @@ OWNER_STAGE_SPECS = [
 ]
 
 TOP_SUMMARY_PANEL_HEIGHT = 420
+
+EDITABLE_STATUS_OPTIONS = sort_status_values(
+    [
+        "기회 검토",
+        "입찰 여부 결정",
+        "제안서 작성 중",
+        "제출 완료",
+        "서면평가",
+        "선정대기",
+        "발표대기",
+        "발표평가",
+        "수주",
+        "미수주",
+        "미선정",
+    ]
+)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -1702,7 +1719,105 @@ def render_detail_field(label: str, value: str) -> None:
     st.write(value)
 
 
-def render_selected_proposal_detail(row: pd.Series) -> None:
+def format_amount_input_value(value: object) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(numeric):
+        return ""
+    if float(numeric).is_integer():
+        return str(int(numeric))
+    return str(float(numeric))
+
+
+def editable_status_options(current_status: str) -> list[str]:
+    current = current_status.strip()
+    if current and current not in EDITABLE_STATUS_OPTIONS:
+        return sort_status_values([*EDITABLE_STATUS_OPTIONS, current])
+    return EDITABLE_STATUS_OPTIONS
+
+
+def parse_editable_amount(value: str, label: str) -> float | None:
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    numeric = pd.to_numeric(pd.Series([normalized]), errors="coerce").iloc[0]
+    if pd.isna(numeric):
+        raise ValueError(f"`{label}`은 숫자로 입력해 주세요.")
+    return float(numeric)
+
+
+def render_proposal_edit_form(row: pd.Series, row_key: str) -> None:
+    proposal_id = str(row.get("proposal_id", "")).strip()
+    if not proposal_id:
+        st.info("제안ID가 없는 항목은 여기서 수정할 수 없습니다.")
+        return
+
+    save_message = st.session_state.get("proposal_save_message")
+    if isinstance(save_message, dict) and save_message.get("proposal_id") == proposal_id:
+        st.success(str(save_message.get("message", "저장되었습니다.")))
+
+    current_status = str(row.get("status_name", "")).strip() or "미입력"
+    current_awarded = str(row.get("awarded_yn", "")).strip().upper()
+    awarded_options = ["", "Y", "N"]
+    awarded_index = awarded_options.index(current_awarded) if current_awarded in awarded_options else 0
+    status_options = editable_status_options(current_status)
+    status_index = status_options.index(current_status) if current_status in status_options else 0
+
+    with st.form(f"proposal_edit_form_{row_key}", clear_on_submit=False):
+        st.markdown("**수정 폼**")
+        st.caption("상태, 책임자, 수주여부, 부처, 비고, 금액만 수정할 수 있습니다. 금액은 천원 단위입니다.")
+
+        top_cols = st.columns(4)
+        edited_status = top_cols[0].selectbox("상태", status_options, index=status_index)
+        edited_owner = top_cols[1].text_input("책임자", value=str(row.get("owner", "")).strip())
+        edited_awarded = top_cols[2].selectbox(
+            "수주여부",
+            awarded_options,
+            index=awarded_index,
+            format_func=lambda value: {"": "미입력", "Y": "Y", "N": "N"}.get(value, value),
+        )
+        edited_ministry = top_cols[3].text_input("부처", value=str(row.get("ministry", "")).strip())
+
+        amount_cols = st.columns(4)
+        edited_total_cost = amount_cols[0].text_input("총사업비(천원)", value=format_amount_input_value(row.get("total_project_cost_kkrw")))
+        edited_government = amount_cols[1].text_input("정부지원금(천원)", value=format_amount_input_value(row.get("government_funding_kkrw")))
+        edited_private_cash = amount_cols[2].text_input("민간부담금(현금, 천원)", value=format_amount_input_value(row.get("private_cash_kkrw")))
+        edited_private_kind = amount_cols[3].text_input("민간부담금(현물, 천원)", value=format_amount_input_value(row.get("private_in_kind_kkrw")))
+
+        edited_notes = st.text_area("비고", value=str(row.get("notes", "")).strip(), height=120)
+        submitted = st.form_submit_button("저장", use_container_width=False)
+
+    if not submitted:
+        return
+
+    try:
+        payload = {
+            "status_name": edited_status,
+            "owner": edited_owner,
+            "awarded_yn": edited_awarded,
+            "ministry": edited_ministry,
+            "notes": edited_notes,
+            "total_project_cost_kkrw": parse_editable_amount(edited_total_cost, "총사업비"),
+            "government_funding_kkrw": parse_editable_amount(edited_government, "정부지원금"),
+            "private_cash_kkrw": parse_editable_amount(edited_private_cash, "민간부담금(현금)"),
+            "private_in_kind_kkrw": parse_editable_amount(edited_private_kind, "민간부담금(현물)"),
+        }
+        settings = load_settings()
+        update_proposal_master_record(settings, proposal_id, payload)
+    except Exception as exc:
+        st.error(f"저장 중 오류가 발생했습니다: {exc}")
+        return
+
+    st.cache_data.clear()
+    st.session_state["proposal_save_message"] = {
+        "proposal_id": proposal_id,
+        "message": f"{proposal_id} 항목을 Google Sheet에 저장했습니다.",
+    }
+    st.rerun()
+
+
+def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
     status_name = str(row.get("status_name", "")).strip() or "미입력"
     awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
     awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
@@ -1761,6 +1876,9 @@ def render_selected_proposal_detail(row: pd.Series) -> None:
             f"<div style='white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere;'>{html.escape(notes_value)}</div>",
             unsafe_allow_html=True,
         )
+
+    st.divider()
+    render_proposal_edit_form(row, row_key)
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -1939,7 +2057,7 @@ def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
 
         if is_open:
             st.divider()
-            render_selected_proposal_detail(row)
+            render_selected_proposal_detail(row, row_key)
 
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
