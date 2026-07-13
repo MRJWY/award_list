@@ -12,6 +12,20 @@ import pandas as pd
 from core.settings import ROOT_DIR, Settings
 from core.transforms import PROPOSAL_MASTER_COLUMN_ALIASES, PROPOSAL_MASTER_COLUMNS, normalize_text, normalize_yn_flag
 
+DEFAULT_STATUS_CODE_MAP = {
+    "기회 검토": "REVIEW",
+    "입찰 여부 결정": "BID_DECISION",
+    "제안서 작성 중": "DRAFT",
+    "제출 완료": "SUBMITTED",
+    "서면평가": "DOCUMENT_EVAL",
+    "선정대기": "SELECTION_WAIT",
+    "발표대기": "ANNOUNCEMENT_WAIT",
+    "발표평가": "ANNOUNCEMENT_WAIT",
+    "수주": "AWARDED",
+    "미수주": "NOT_AWARDED",
+    "미선정": "NOT_AWARDED",
+}
+
 
 def is_google_sheet_configured(settings: Settings) -> bool:
     return bool(
@@ -124,14 +138,17 @@ def _serialize_update_value(column: str, value: object) -> str:
 def _status_name_to_code_map(settings: Settings) -> dict[str, str]:
     cached_frames = load_cached_workbook_frames(settings)
     status_df = cached_frames.get(settings.google_worksheet_code_map_status, pd.DataFrame()).copy()
+    status_map = dict(DEFAULT_STATUS_CODE_MAP)
     if status_df.empty or "status_name" not in status_df.columns or "status_code" not in status_df.columns:
-        return {}
+        return status_map
 
-    return {
+    cached_status_map = {
         normalize_text(row.get("status_name")): normalize_text(row.get("status_code")).upper()
         for _, row in status_df.iterrows()
         if normalize_text(row.get("status_name"))
     }
+    status_map.update(cached_status_map)
+    return status_map
 
 
 def _append_cache_csv_row(worksheet_name: str, headers: list[str], row_values: list[str]) -> None:
