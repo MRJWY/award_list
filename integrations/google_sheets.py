@@ -4,9 +4,10 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -49,6 +50,7 @@ def build_google_sheet_diagnostics(settings: Settings) -> dict[str, object]:
             if settings.google_sheet_id
             else ""
         ),
+        "app_timezone": settings.app_timezone,
         "proposal_master_sheet": settings.google_worksheet_proposal_master,
         "product_sheet": settings.google_worksheet_code_map_product,
         "status_sheet": settings.google_worksheet_code_map_status,
@@ -115,6 +117,22 @@ def _proposal_master_header_index_map(headers: list[object]) -> dict[str, int]:
     return header_map
 
 
+def _timezone_for_settings(settings: Settings) -> ZoneInfo:
+    timezone_name = (settings.app_timezone or "").strip() or "UTC"
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def _current_datetime(settings: Settings) -> datetime:
+    return datetime.now(_timezone_for_settings(settings))
+
+
+def _current_timestamp_string(settings: Settings) -> str:
+    return _current_datetime(settings).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _serialize_update_value(column: str, value: object) -> str:
     if column in {
         "total_project_cost_kkrw",
@@ -136,7 +154,7 @@ def _serialize_update_value(column: str, value: object) -> str:
         return normalize_yn_flag(value)
 
     if column == "last_updated_at":
-        return normalize_text(value) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return normalize_text(value)
 
     return normalize_text(value)
 
@@ -322,7 +340,7 @@ def append_sync_log_entry(
 ) -> None:
     workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(settings.google_worksheet_sync_log)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = _current_timestamp_string(settings)
     payload = {
         "run_id": f"manual-edit-{uuid4().hex[:12]}",
         "run_type": action,
@@ -340,14 +358,14 @@ def append_sync_log_entry(
     _append_cache_csv_row(settings.google_worksheet_sync_log, headers, row_values)
 
 
-def generate_next_proposal_id(worksheet) -> str:
+def generate_next_proposal_id(settings: Settings, worksheet) -> str:
     headers = worksheet.row_values(1)
     header_map = _proposal_master_header_index_map(headers)
     proposal_id_col = header_map.get("proposal_id")
     if proposal_id_col is None:
         raise RuntimeError("`proposal_id` column was not found in PROPOSAL_MASTER.")
 
-    current_year = datetime.now().year
+    current_year = _current_datetime(settings).year
     proposal_ids = worksheet.col_values(proposal_id_col)[1:]
     pattern = re.compile(r"^PROP-(\d{4})-(\d+)$", re.IGNORECASE)
     max_sequence = 0
@@ -414,8 +432,8 @@ def create_proposal_master_record(
     if awarded_flag not in {"", "Y", "N"}:
         raise ValueError("수주여부는 Y, N 또는 빈값만 입력할 수 있습니다.")
 
-    proposal_id = generate_next_proposal_id(worksheet)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    proposal_id = generate_next_proposal_id(settings, worksheet)
+    timestamp = _current_timestamp_string(settings)
     normalized_payload: dict[str, object] = {column: "" for column in PROPOSAL_MASTER_COLUMNS}
     normalized_payload.update(
         {
@@ -506,7 +524,7 @@ def update_proposal_master_record(
     if "status_name" in sanitized_updates and "status_code" not in sanitized_updates:
         status_code = _status_name_to_code_map(settings).get(normalize_text(sanitized_updates["status_name"]), "")
         sanitized_updates["status_code"] = status_code
-    sanitized_updates["last_updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sanitized_updates["last_updated_at"] = _current_timestamp_string(settings)
 
     workbook = _open_workbook(settings)
     worksheet = workbook.worksheet(settings.google_worksheet_proposal_master)

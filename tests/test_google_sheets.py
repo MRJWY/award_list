@@ -1,8 +1,11 @@
 from pathlib import Path
 import sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import integrations.google_sheets as google_sheets
 from integrations.google_sheets import build_google_sheet_diagnostics, verify_proposal_master_row_updates
 
 
@@ -103,6 +106,7 @@ def test_verify_proposal_master_row_updates_raises_on_persistent_mismatch() -> N
 def test_build_google_sheet_diagnostics_includes_sheet_url() -> None:
     class SettingsStub:
         google_sheet_id = "sheet123"
+        app_timezone = "Asia/Seoul"
         google_worksheet_proposal_master = "PROPOSAL_MASTER"
         google_worksheet_code_map_product = "CODE_MAP_PRODUCT"
         google_worksheet_code_map_status = "CODE_MAP_STATUS"
@@ -113,3 +117,19 @@ def test_build_google_sheet_diagnostics_includes_sheet_url() -> None:
     diagnostics = build_google_sheet_diagnostics(SettingsStub())
 
     assert diagnostics["google_sheet_url"] == "https://docs.google.com/spreadsheets/d/sheet123/edit"
+    assert diagnostics["app_timezone"] == "Asia/Seoul"
+
+
+def test_current_timestamp_string_uses_configured_timezone(monkeypatch) -> None:
+    class SettingsStub:
+        app_timezone = "Asia/Seoul"
+
+    fixed_utc = datetime(2026, 7, 26, 23, 47, 34, tzinfo=ZoneInfo("UTC"))
+
+    def fake_current_datetime(settings) -> datetime:
+        assert settings.app_timezone == "Asia/Seoul"
+        return fixed_utc.astimezone(google_sheets._timezone_for_settings(settings))
+
+    monkeypatch.setattr(google_sheets, "_current_datetime", fake_current_datetime)
+
+    assert google_sheets._current_timestamp_string(SettingsStub()) == "2026-07-27 08:47:34"
