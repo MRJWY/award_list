@@ -144,6 +144,7 @@ def render_connection_diagnostics(load_message: str, diagnostics: dict[str, obje
             [
                 {"Item": "GOOGLE_SHEET_ID present", "Value": "Y" if diagnostics.get("google_sheet_id_present") else "N"},
                 {"Item": "GOOGLE_SHEET_ID preview", "Value": sheet_id_preview},
+                {"Item": "Google Sheet URL", "Value": diagnostics.get("google_sheet_url") or "-"},
                 {"Item": "Service account JSON present", "Value": "Y" if diagnostics.get("service_account_json_present") else "N"},
                 {"Item": "Service account JSON valid", "Value": json_valid_label},
                 {"Item": "Service account email", "Value": client_email},
@@ -2386,7 +2387,7 @@ def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]
         dedent(
             """
         <h3 class="section-title">원본 제안 리스트</h3>
-        <div class="table-note">카드형 리스트에서 상세 버튼을 누르면 같은 카드 아래로 주제와 개별 금액 상세가 펼쳐집니다. 상세 수정은 Google Sheet에서 직접 진행합니다.</div>
+        <div class="table-note">카드형 리스트에서 상세 버튼을 누르면 같은 카드 아래로 세부 정보가 펼쳐집니다. 카드에서 일부 항목을 바로 수정하고 저장하면 연결된 Google Sheet 원문에 반영됩니다.</div>
         """
         ),
         unsafe_allow_html=True,

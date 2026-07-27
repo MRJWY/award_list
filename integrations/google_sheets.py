@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
@@ -42,6 +43,11 @@ def build_google_sheet_diagnostics(settings: Settings) -> dict[str, object]:
             f"{settings.google_sheet_id[:6]}...{settings.google_sheet_id[-6:]}"
             if len(settings.google_sheet_id) >= 12
             else settings.google_sheet_id
+        ),
+        "google_sheet_url": (
+            f"https://docs.google.com/spreadsheets/d/{settings.google_sheet_id}/edit"
+            if settings.google_sheet_id
+            else ""
         ),
         "proposal_master_sheet": settings.google_worksheet_proposal_master,
         "product_sheet": settings.google_worksheet_code_map_product,
@@ -131,6 +137,29 @@ def _serialize_update_value(column: str, value: object) -> str:
 
     if column == "last_updated_at":
         return normalize_text(value) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return normalize_text(value)
+
+
+def _normalize_sheet_value_for_compare(column: str, value: object) -> str:
+    if column in {
+        "total_project_cost_kkrw",
+        "government_funding_kkrw",
+        "private_cash_kkrw",
+        "private_in_kind_kkrw",
+    }:
+        normalized = normalize_text(value)
+        if not normalized:
+            return ""
+        numeric = pd.to_numeric(pd.Series([normalized]), errors="coerce").iloc[0]
+        if pd.isna(numeric):
+            return normalized
+        if float(numeric).is_integer():
+            return str(int(numeric))
+        return str(float(numeric))
+
+    if column == "awarded_yn":
+        return normalize_yn_flag(value)
 
     return normalize_text(value)
 
@@ -246,6 +275,42 @@ def validate_proposal_master_edit_payload(
         validated_updates["awarded_yn"] = awarded_flag
 
     return header_map, validated_updates
+
+
+def verify_proposal_master_row_updates(
+    worksheet,
+    target_row_index: int,
+    header_map: dict[str, int],
+    applied_updates: dict[str, str],
+    max_attempts: int = 3,
+    retry_delay_seconds: float = 0.35,
+) -> None:
+    mismatches: list[str] = []
+    for attempt in range(max_attempts):
+        row_values = worksheet.row_values(target_row_index)
+        mismatches = []
+        for column, expected_value in applied_updates.items():
+            column_index = header_map.get(column)
+            if column_index is None:
+                continue
+
+            actual_value = row_values[column_index - 1] if len(row_values) >= column_index else ""
+            normalized_expected = _normalize_sheet_value_for_compare(column, expected_value)
+            normalized_actual = _normalize_sheet_value_for_compare(column, actual_value)
+            if normalized_actual != normalized_expected:
+                mismatches.append(
+                    f"{column} (expected={normalized_expected!r}, actual={normalized_actual!r})"
+                )
+
+        if not mismatches:
+            return
+        if attempt < max_attempts - 1:
+            time.sleep(retry_delay_seconds)
+
+    raise RuntimeError(
+        "Google Sheet write could not be verified against the live row: "
+        + ", ".join(mismatches)
+    )
 
 
 def append_sync_log_entry(
@@ -484,6 +549,12 @@ def update_proposal_master_record(
         raise RuntimeError("Editable columns were not found in PROPOSAL_MASTER.")
 
     worksheet.update_cells(cells, value_input_option="USER_ENTERED")
+    verify_proposal_master_row_updates(
+        worksheet=worksheet,
+        target_row_index=target_row_index,
+        header_map=header_map,
+        applied_updates=applied_updates,
+    )
     _update_cache_csv_row(
         settings.google_worksheet_proposal_master,
         headers,
