@@ -72,6 +72,29 @@ def test_verify_proposal_master_row_updates_retries_before_succeeding() -> None:
     )
 
 
+def test_verify_proposal_master_row_updates_accepts_formatted_numeric_values() -> None:
+    worksheet = StubWorksheet([["P-001", "?섏＜", "Y", "1,000"]])
+    header_map = {
+        "proposal_id": 1,
+        "status_name": 2,
+        "awarded_yn": 3,
+        "total_project_cost_kkrw": 4,
+    }
+
+    verify_proposal_master_row_updates(
+        worksheet=worksheet,
+        target_row_index=2,
+        header_map=header_map,
+        applied_updates={
+            "status_name": "?섏＜",
+            "awarded_yn": "Y",
+            "total_project_cost_kkrw": "1000",
+        },
+        max_attempts=1,
+        retry_delay_seconds=0,
+    )
+
+
 def test_verify_proposal_master_row_updates_raises_on_persistent_mismatch() -> None:
     worksheet = StubWorksheet([["P-001", "검토중", "N", "900"]])
     header_map = {

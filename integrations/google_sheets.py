@@ -169,7 +169,8 @@ def _normalize_sheet_value_for_compare(column: str, value: object) -> str:
         normalized = normalize_text(value)
         if not normalized:
             return ""
-        numeric = pd.to_numeric(pd.Series([normalized]), errors="coerce").iloc[0]
+        normalized_numeric = normalized.replace(",", "")
+        numeric = pd.to_numeric(pd.Series([normalized_numeric]), errors="coerce").iloc[0]
         if pd.isna(numeric):
             return normalized
         if float(numeric).is_integer():
