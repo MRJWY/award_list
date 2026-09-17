@@ -13,6 +13,7 @@ import pandas as pd
 
 from core.settings import ROOT_DIR, Settings
 from core.transforms import PROPOSAL_MASTER_COLUMN_ALIASES, PROPOSAL_MASTER_COLUMNS, normalize_text, normalize_yn_flag
+from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, YEARLY_BUDGET_ALIASES, YEARLY_BUDGET_SHEET_HEADERS, validate_yearly_budget_amounts
 
 DEFAULT_STATUS_CODE_MAP = {
     "기회 검토": "REVIEW",
@@ -55,6 +56,7 @@ def build_google_sheet_diagnostics(settings: Settings) -> dict[str, object]:
         "product_sheet": settings.google_worksheet_code_map_product,
         "status_sheet": settings.google_worksheet_code_map_status,
         "sync_log_sheet": settings.google_worksheet_sync_log,
+        "yearly_budget_sheet": getattr(settings, "google_worksheet_yearly_budget", "PROJECT_YEAR_BUDGET"),
         "service_account_json_present": bool(settings.google_service_account_json),
         "service_account_json_path_present": bool(settings.google_service_account_json_path),
         "service_account_json_valid": None,
@@ -107,6 +109,29 @@ def _open_workbook(settings: Settings):
     return client.open_by_key(settings.google_sheet_id)
 
 
+def _ensure_worksheet_capacity(worksheet, required_rows: int, required_cols: int) -> None:
+    current_rows = max(int(getattr(worksheet, "row_count", 0) or 0), 0)
+    current_cols = max(int(getattr(worksheet, "col_count", 0) or 0), 0)
+    target_rows = max(current_rows, required_rows)
+    target_cols = max(current_cols, required_cols)
+
+    if target_rows == current_rows and target_cols == current_cols:
+        return
+
+    worksheet.resize(rows=target_rows, cols=target_cols)
+
+
+def _prepare_worksheet_for_append(worksheet, row_values: list[str]) -> None:
+    # These sheets always keep a stable value in column A, so the first column
+    # gives us a reliable "next append row" without fetching the entire grid.
+    next_row_index = len(worksheet.col_values(1)) + 1
+    _ensure_worksheet_capacity(
+        worksheet,
+        required_rows=next_row_index,
+        required_cols=max(len(row_values), 1),
+    )
+
+
 def _proposal_master_header_index_map(headers: list[object]) -> dict[str, int]:
     header_map: dict[str, int] = {}
     for index, raw_header in enumerate(headers, start=1):
@@ -139,6 +164,7 @@ def _serialize_update_value(column: str, value: object) -> str:
         "government_funding_kkrw",
         "private_cash_kkrw",
         "private_in_kind_kkrw",
+        *YEARLY_AMOUNT_COLUMNS,
     }:
         normalized = normalize_text(value)
         if not normalized:
@@ -165,6 +191,7 @@ def _normalize_sheet_value_for_compare(column: str, value: object) -> str:
         "government_funding_kkrw",
         "private_cash_kkrw",
         "private_in_kind_kkrw",
+        *YEARLY_AMOUNT_COLUMNS,
     }:
         normalized = normalize_text(value)
         if not normalized:
@@ -355,6 +382,7 @@ def append_sync_log_entry(
     }
     headers = [str(header).strip() for header in worksheet.row_values(1)]
     row_values = [payload.get(header, "") for header in headers]
+    _prepare_worksheet_for_append(worksheet, row_values)
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
     _append_cache_csv_row(settings.google_worksheet_sync_log, headers, row_values)
 
@@ -473,6 +501,7 @@ def create_proposal_master_record(
         if str(canonical) in PROPOSAL_MASTER_COLUMNS and serialized_value:
             applied_values[str(canonical)] = serialized_value
 
+    _prepare_worksheet_for_append(worksheet, row_values)
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
     _append_cache_csv_row(settings.google_worksheet_proposal_master, headers, row_values)
     append_sync_log_entry(
@@ -597,6 +626,7 @@ def worksheet_names(settings: Settings) -> list[str]:
         settings.google_worksheet_code_map_product,
         settings.google_worksheet_code_map_status,
         settings.google_worksheet_sync_log,
+        settings.google_worksheet_yearly_budget,
     ]
 
 
@@ -636,12 +666,108 @@ def load_workbook_frames(settings: Settings, allow_empty: bool = False) -> dict[
             return {name: pd.DataFrame() for name in worksheet_names(settings)}
         raise RuntimeError("Google Sheet is not configured. Update `.env` before loading data.")
 
+    import gspread
+
     workbook = _open_workbook(settings)
     workbook_frames: dict[str, pd.DataFrame] = {}
     for sheet_name in worksheet_names(settings):
-        worksheet = workbook.worksheet(sheet_name)
+        try:
+            worksheet = workbook.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            if sheet_name == settings.google_worksheet_yearly_budget:
+                workbook_frames[sheet_name] = pd.DataFrame(columns=YEARLY_BUDGET_SHEET_HEADERS)
+                continue
+            raise
         workbook_frames[sheet_name] = pd.DataFrame(worksheet.get_all_records())
     return workbook_frames
+
+
+def upsert_yearly_budget_record(
+    settings: Settings,
+    proposal_id: str,
+    project_year: int,
+    amounts: dict[str, object],
+    notes: str = "",
+) -> None:
+    if not is_google_sheet_configured(settings):
+        raise RuntimeError("Google Sheet is not configured.")
+    proposal_id = normalize_text(proposal_id)
+    if not proposal_id:
+        raise ValueError("제안ID가 필요합니다.")
+    if not 1 <= project_year <= 30:
+        raise ValueError("연차는 1~30 사이여야 합니다.")
+    validated = validate_yearly_budget_amounts(amounts)
+    workbook = _open_workbook(settings)
+    master = workbook.worksheet(settings.google_worksheet_proposal_master)
+    master_headers = _proposal_master_header_index_map(master.row_values(1))
+    id_column = master_headers.get("proposal_id")
+    if id_column is None or proposal_id not in [normalize_text(value) for value in master.col_values(id_column)[1:]]:
+        raise KeyError(f"제안ID가 원본 목록에 없습니다: {proposal_id}")
+
+    try:
+        import gspread
+
+        worksheet = workbook.worksheet(settings.google_worksheet_yearly_budget)
+    except gspread.WorksheetNotFound:
+        worksheet = workbook.add_worksheet(
+            title=settings.google_worksheet_yearly_budget,
+            rows=100,
+            cols=len(YEARLY_BUDGET_SHEET_HEADERS),
+        )
+        worksheet.update([YEARLY_BUDGET_SHEET_HEADERS], "A1")
+
+    headers = [str(value).strip() for value in worksheet.row_values(1)]
+    canonical_headers = [YEARLY_BUDGET_ALIASES.get(header, header) for header in headers]
+    required = {
+        "proposal_id", "project_year", *YEARLY_AMOUNT_COLUMNS, "notes", "last_updated_at",
+    }
+    if not required.issubset(canonical_headers):
+        missing = ", ".join(sorted(required - set(canonical_headers)))
+        raise RuntimeError(f"연차별 사업비 시트에 필요한 열이 없습니다: {missing}")
+
+    record = {
+        "proposal_id": proposal_id,
+        "project_year": str(project_year),
+        **{column: "" if value is None else str(value) for column, value in validated.items()},
+        "notes": normalize_text(notes),
+        "last_updated_at": _current_timestamp_string(settings),
+    }
+    values = [record.get(column, "") for column in canonical_headers]
+    existing_rows = worksheet.get_all_values()
+    id_index = canonical_headers.index("proposal_id")
+    year_index = canonical_headers.index("project_year")
+    matches = [
+        row_number
+        for row_number, row in enumerate(existing_rows[1:], start=2)
+        if len(row) > max(id_index, year_index)
+        and normalize_text(row[id_index]) == proposal_id
+        and normalize_text(row[year_index]) == str(project_year)
+    ]
+    if len(matches) > 1:
+        raise RuntimeError(f"{proposal_id} {project_year}차년도 행이 중복되어 있습니다.")
+    if matches:
+        row_number = matches[0]
+        cells = [
+            gspread.Cell(row_number, canonical_headers.index(column) + 1, value)
+            for column, value in record.items()
+        ]
+        worksheet.update_cells(cells, value_input_option="USER_ENTERED")
+    else:
+        _prepare_worksheet_for_append(worksheet, values)
+        worksheet.append_row(values, value_input_option="USER_ENTERED")
+        row_number = len(worksheet.col_values(id_index + 1))
+    verify_proposal_master_row_updates(
+        worksheet,
+        row_number,
+        {column: index for index, column in enumerate(canonical_headers, start=1)},
+        record,
+    )
+    append_sync_log_entry(
+        settings,
+        action="YEARLY_BUDGET_EDIT",
+        source_sheet=settings.google_worksheet_yearly_budget,
+        message=f"{proposal_id} year {project_year} budget updated",
+    )
 
 
 def load_live_or_cached_workbook_frames(settings: Settings) -> WorkbookLoadResult:

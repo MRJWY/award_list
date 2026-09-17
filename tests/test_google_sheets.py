@@ -21,6 +21,23 @@ class StubWorksheet:
         return self._row_sequences[index]
 
 
+class CapacityWorksheetStub:
+    def __init__(self, column_values: list[str], row_count: int, col_count: int) -> None:
+        self._column_values = list(column_values)
+        self.row_count = row_count
+        self.col_count = col_count
+        self.resize_calls: list[tuple[int, int]] = []
+
+    def col_values(self, column_index: int) -> list[str]:
+        assert column_index == 1
+        return list(self._column_values)
+
+    def resize(self, *, rows: int, cols: int) -> None:
+        self.row_count = rows
+        self.col_count = cols
+        self.resize_calls.append((rows, cols))
+
+
 def test_verify_proposal_master_row_updates_accepts_matching_values() -> None:
     worksheet = StubWorksheet([["P-001", "수주", "Y", "1000"]])
     header_map = {
@@ -156,3 +173,39 @@ def test_current_timestamp_string_uses_configured_timezone(monkeypatch) -> None:
     monkeypatch.setattr(google_sheets, "_current_datetime", fake_current_datetime)
 
     assert google_sheets._current_timestamp_string(SettingsStub()) == "2026-07-27 08:47:34"
+
+
+def test_prepare_worksheet_for_append_resizes_when_next_row_exceeds_grid() -> None:
+    worksheet = CapacityWorksheetStub(
+        column_values=["header"] + [f"row-{index}" for index in range(1, 201)],
+        row_count=201,
+        col_count=65,
+    )
+
+    google_sheets._prepare_worksheet_for_append(worksheet, ["value"] * 65)
+
+    assert worksheet.resize_calls == [(202, 65)]
+
+
+def test_prepare_worksheet_for_append_resizes_when_row_width_exceeds_grid() -> None:
+    worksheet = CapacityWorksheetStub(
+        column_values=["header", "row-1"],
+        row_count=100,
+        col_count=3,
+    )
+
+    google_sheets._prepare_worksheet_for_append(worksheet, ["a", "b", "c", "d", "e"])
+
+    assert worksheet.resize_calls == [(100, 5)]
+
+
+def test_prepare_worksheet_for_append_skips_resize_when_grid_is_already_large_enough() -> None:
+    worksheet = CapacityWorksheetStub(
+        column_values=["header", "row-1"],
+        row_count=500,
+        col_count=20,
+    )
+
+    google_sheets._prepare_worksheet_for_append(worksheet, ["a", "b", "c"])
+
+    assert worksheet.resize_calls == []

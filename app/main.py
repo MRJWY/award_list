@@ -25,6 +25,7 @@ from core.business_logic import (
 )
 from core.settings import load_settings
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
+from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, build_project_yearly_matrix, normalize_yearly_budget, validate_yearly_budget_amounts
 from integrations.google_sheets import (
     WorkbookLoadResult,
     build_google_sheet_diagnostics,
@@ -33,6 +34,7 @@ from integrations.google_sheets import (
     load_live_or_cached_workbook_frames,
     resolve_workbook_update_timestamp,
     update_proposal_master_record,
+    upsert_yearly_budget_record,
 )
 
 
@@ -113,7 +115,7 @@ def build_product_code_options(
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_dashboard_data(prefer_cache: bool = False) -> tuple[pd.DataFrame, object, str, str, dict[str, object], list[dict[str, str]]]:
+def load_dashboard_data(prefer_cache: bool = False) -> tuple[pd.DataFrame, pd.DataFrame, object, str, str, dict[str, object], list[dict[str, str]]]:
     settings = load_settings()
     if prefer_cache:
         load_result = WorkbookLoadResult(
@@ -124,11 +126,12 @@ def load_dashboard_data(prefer_cache: bool = False) -> tuple[pd.DataFrame, objec
     else:
         load_result = load_live_or_cached_workbook_frames(settings)
     proposal_df = load_result.workbook_frames.get(settings.google_worksheet_proposal_master, pd.DataFrame())
+    yearly_df = normalize_yearly_budget(load_result.workbook_frames.get(settings.google_worksheet_yearly_budget, pd.DataFrame()))
     normalized = add_deadline_health_columns(normalize_proposal_master(proposal_df))
     latest_update = resolve_workbook_update_timestamp(load_result.workbook_frames, settings, load_result.source)
     diagnostics = build_google_sheet_diagnostics(settings)
     product_options = build_product_code_options(load_result.workbook_frames, settings)
-    return normalized, latest_update, load_result.source, load_result.message, diagnostics, product_options
+    return normalized, yearly_df, latest_update, load_result.source, load_result.message, diagnostics, product_options
 
 
 def render_connection_diagnostics(load_message: str, diagnostics: dict[str, object]) -> None:
@@ -152,6 +155,7 @@ def render_connection_diagnostics(load_message: str, diagnostics: dict[str, obje
                 {"Item": "CODE_MAP_PRODUCT worksheet", "Value": diagnostics.get("product_sheet") or "-"},
                 {"Item": "CODE_MAP_STATUS worksheet", "Value": diagnostics.get("status_sheet") or "-"},
                 {"Item": "SYNC_LOG worksheet", "Value": diagnostics.get("sync_log_sheet") or "-"},
+                {"Item": "PROJECT_YEAR_BUDGET worksheet", "Value": diagnostics.get("yearly_budget_sheet") or "-"},
             ]
         )
         st.dataframe(diagnostic_rows, use_container_width=True, hide_index=True)
@@ -1931,7 +1935,83 @@ def render_new_proposal_form(product_options: list[dict[str, str]]) -> None:
     st.rerun()
 
 
-def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
+def _budget_display(value: object) -> str:
+    return "-" if pd.isna(value) else f"{float(value):,.0f}"
+
+
+def _budget_display_with_unit(value: object) -> str:
+    return "-" if pd.isna(value) else f"{_budget_display(value)}천원"
+
+
+def render_yearly_budget_section(row: pd.Series, row_key: str, yearly_df: pd.DataFrame) -> None:
+    proposal_id = str(row.get("proposal_id", "")).strip()
+    st.divider()
+    render_detail_section_heading("연차별 사업비")
+    st.caption("단위: 천원 · 우리 사업비 = 우리 정부지원금 + 우리 민간부담금(현금) + 우리 민간부담금(현물)")
+    if not proposal_id:
+        st.info("제안ID가 있어야 연차별 사업비를 입력할 수 있습니다.")
+        return
+
+    project_rows = yearly_df.loc[yearly_df["proposal_id"].eq(proposal_id)].sort_values("project_year")
+    if project_rows.empty:
+        st.info("입력된 연차별 사업비가 없습니다.")
+    else:
+        columns = {
+            "project_year": "연차",
+            "period_start": "시작일",
+            "period_end": "종료일",
+            "total_project_cost_kkrw": "전체 총사업비",
+            "our_government_funding_kkrw": "우리 정부지원금",
+            "our_private_cash_kkrw": "우리 민간부담금(현금)",
+            "our_private_in_kind_kkrw": "우리 민간부담금(현물)",
+            "our_project_cost_kkrw": "우리 사업비 합계",
+            "notes": "비고",
+        }
+        display = project_rows[list(columns)].rename(columns=columns).copy()
+        display["연차"] = display["연차"].map(lambda value: f"{value}차년도")
+        for column in ["전체 총사업비", "우리 정부지원금", "우리 민간부담금(현금)", "우리 민간부담금(현물)", "우리 사업비 합계"]:
+            display[column] = display[column].map(_budget_display)
+        st.dataframe(display, hide_index=True, use_container_width=True)
+        totals = project_rows[["total_project_cost_kkrw", "our_project_cost_kkrw"]].sum(min_count=1)
+        st.caption(
+            f"입력된 연차 합계: 전체 {_budget_display_with_unit(totals['total_project_cost_kkrw'])}"
+            f" · 우리 {_budget_display_with_unit(totals['our_project_cost_kkrw'])}"
+            f" · 원본 총사업비 {_budget_display_with_unit(row.get('total_project_cost_kkrw'))}"
+        )
+
+    selected_year = st.selectbox(
+        "입력/수정할 연차",
+        range(1, 31),
+        format_func=lambda year: f"{year}차년도",
+        key=f"yearly_budget_year_{row_key}",
+    )
+    matching = project_rows.loc[project_rows["project_year"].eq(selected_year)]
+    current = matching.iloc[0] if not matching.empty else pd.Series(dtype=object)
+    with st.form(f"yearly_budget_form_{row_key}"):
+        cols = st.columns(4)
+        labels = ["전체 총사업비(천원)", "우리 정부지원금(천원)", "우리 민간부담금(현금, 천원)", "우리 민간부담금(현물, 천원)"]
+        inputs = {}
+        for column, label, holder in zip(YEARLY_AMOUNT_COLUMNS, labels, cols):
+            value = current.get(column)
+            inputs[column] = holder.text_input(label, value="" if pd.isna(value) else _budget_display(value), key=f"yearly_{column}_{row_key}_{selected_year}")
+        note_value = current.get("notes", "")
+        notes = st.text_input("연차별 비고", value="" if pd.isna(note_value) else str(note_value), key=f"yearly_notes_{row_key}_{selected_year}")
+        submitted = st.form_submit_button("연차별 사업비 저장")
+    if submitted:
+        try:
+            validated = validate_yearly_budget_amounts(inputs)
+            if all(value is None for value in validated.values()):
+                raise ValueError("금액을 한 항목 이상 입력해 주세요.")
+            upsert_yearly_budget_record(load_settings(), proposal_id, selected_year, validated, notes)
+        except Exception as exc:
+            st.error(f"연차별 사업비 저장 중 오류가 발생했습니다: {exc}")
+        else:
+            st.cache_data.clear()
+            st.session_state["yearly_budget_save_message"] = f"{proposal_id} {selected_year}차년도 사업비를 저장했습니다."
+            st.rerun()
+
+
+def render_selected_proposal_detail(row: pd.Series, row_key: str, yearly_df: pd.DataFrame) -> None:
     status_name = str(row.get("status_name", "")).strip() or "미입력"
     awarded_flag = str(row.get("awarded_yn", "")).strip().upper()
     awarded_text = "Y" if awarded_flag == "Y" else ("N" if awarded_flag == "N" else "-")
@@ -2098,6 +2178,7 @@ def render_selected_proposal_detail(row: pd.Series, row_key: str) -> None:
                 st.rerun()
     else:
         render_inline_sections()
+    render_yearly_budget_section(row, row_key, yearly_df)
 
 def build_proposal_expander_label(row: pd.Series) -> str:
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -2223,7 +2304,7 @@ def render_proposal_square_card(row: pd.Series, row_key: str) -> None:
             st.session_state["expanded_proposal_key"] = row_key if is_open else None
 
 
-def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
+def render_proposal_list_card(row: pd.Series, row_key: str, yearly_df: pd.DataFrame) -> None:
     status_name = str(row.get("status_name", "")).strip() or "미입력"
     d_day_text, d_day_class = format_d_day(row.get("days_to_deadline"))
     business_name = str(row.get("business_name", "")).strip() or "-"
@@ -2277,7 +2358,7 @@ def render_proposal_list_card(row: pd.Series, row_key: str) -> None:
 
         if is_open:
             st.divider()
-            render_selected_proposal_detail(row, row_key)
+            render_selected_proposal_detail(row, row_key, yearly_df)
 
 def build_recent_proposal_feed_html(df: pd.DataFrame, limit: int = 12) -> str:
     if df.empty:
@@ -2381,7 +2462,7 @@ def build_download_frame(df: pd.DataFrame) -> pd.DataFrame:
             export_df[column] = export_df[column].apply(format_deadline if column == DISPLAY_LABELS.get("submission_deadline", "submission_deadline") else format_timestamp)
     return export_df
 
-def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]]) -> None:
+def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]], yearly_df: pd.DataFrame) -> None:
     toolbar_left, toolbar_right = st.columns([0.8, 0.2])
     toolbar_left.markdown(
         dedent(
@@ -2421,7 +2502,43 @@ def render_detail_section(df: pd.DataFrame, product_options: list[dict[str, str]
     with detail_container:
         for row_index, (_, row) in enumerate(detail_df.iterrows()):
             row_key = proposal_row_key(row, row_index)
-            render_proposal_list_card(row, row_key)
+            render_proposal_list_card(row, row_key, yearly_df)
+
+
+def render_yearly_budget_summary(proposal_df: pd.DataFrame, yearly_df: pd.DataFrame) -> None:
+    st.markdown("### 연차별 사업비 현황")
+    st.caption("현재 필터에 표시된 과제를 1차년도, 2차년도 순서로 비교합니다. 단위는 천원이며 우리 사업비는 세 항목이 모두 입력된 연차만 계산합니다.")
+    visible_ids = set(proposal_df["proposal_id"].dropna().astype(str))
+    visible = yearly_df.loc[yearly_df["proposal_id"].isin(visible_ids) & yearly_df["project_year"].notna()]
+    if visible.empty:
+        st.info("연차별 금액이 아직 입력되지 않았습니다. 아래 과제 카드의 상세 화면에서 입력할 수 있습니다.")
+        return
+    matrix = build_project_yearly_matrix(proposal_df, yearly_df)
+    display_matrix = matrix.copy()
+    for column in display_matrix.columns[3:]:
+        if "사업비" in column or "합계" in column:
+            display_matrix[column] = display_matrix[column].map(_budget_display)
+    st.markdown("#### 과제별 연차 비교")
+    st.dataframe(display_matrix, hide_index=True, use_container_width=True)
+    aggregate_columns = [*YEARLY_AMOUNT_COLUMNS, "our_project_cost_kkrw"]
+    amount_totals = visible[["total_project_cost_kkrw", "our_project_cost_kkrw"]].sum(min_count=1)
+    total_cols = st.columns(2)
+    total_cols[0].metric("입력된 연차 전체 사업비", _budget_display_with_unit(amount_totals["total_project_cost_kkrw"]))
+    total_cols[1].metric("입력된 연차 우리 사업비", _budget_display_with_unit(amount_totals["our_project_cost_kkrw"]))
+    st.markdown("#### 연차별 합계")
+    summary = visible.groupby("project_year", as_index=False)[aggregate_columns].sum(min_count=1)
+    summary = summary.rename(columns={
+        "project_year": "연차",
+        "total_project_cost_kkrw": "전체 총사업비",
+        "our_government_funding_kkrw": "우리 정부지원금",
+        "our_private_cash_kkrw": "우리 민간부담금(현금)",
+        "our_private_in_kind_kkrw": "우리 민간부담금(현물)",
+        "our_project_cost_kkrw": "우리 사업비 합계",
+    })
+    summary["연차"] = summary["연차"].map(lambda value: f"{value}차년도")
+    for column in summary.columns[1:]:
+        summary[column] = summary[column].map(_budget_display)
+    st.dataframe(summary, hide_index=True, use_container_width=True)
 
 
 def main() -> None:
@@ -2431,7 +2548,7 @@ def main() -> None:
     try:
         prefer_cache = bool(st.session_state.get("prefer_cached_dashboard_once", False))
         st.session_state["prefer_cached_dashboard_once"] = False
-        proposal_df, latest_sync, data_source, load_message, diagnostics, product_options = load_dashboard_data(prefer_cache)
+        proposal_df, yearly_df, latest_sync, data_source, load_message, diagnostics, product_options = load_dashboard_data(prefer_cache)
     except Exception as exc:
         st.error(f"Google Sheet 데이터를 불러오지 못했습니다: {exc}")
         st.info("`.env` 값과 Google 서비스 계정 권한을 확인한 뒤 다시 실행해 주세요.")
@@ -2476,7 +2593,11 @@ def main() -> None:
     with top_columns[2]:
         render_owner_summary_panel(filtered_df)
 
-    render_detail_section(filtered_df, product_options)
+    yearly_message = st.session_state.pop("yearly_budget_save_message", None)
+    if yearly_message:
+        st.success(yearly_message)
+    render_yearly_budget_summary(filtered_df, yearly_df)
+    render_detail_section(filtered_df, product_options, yearly_df)
 
 if __name__ == "__main__":
     main()

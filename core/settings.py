@@ -34,6 +34,7 @@ class Settings:
     google_worksheet_code_map_product: str
     google_worksheet_code_map_status: str
     google_worksheet_sync_log: str
+    google_worksheet_yearly_budget: str
     streamlit_server_port: int
     streamlit_server_headless: bool
     slack_bot_token: str
@@ -106,6 +107,7 @@ def load_settings() -> Settings:
         google_worksheet_code_map_product=_config_value("GOOGLE_WORKSHEET_CODE_MAP_PRODUCT", "CODE_MAP_PRODUCT"),
         google_worksheet_code_map_status=_config_value("GOOGLE_WORKSHEET_CODE_MAP_STATUS", "CODE_MAP_STATUS"),
         google_worksheet_sync_log=_config_value("GOOGLE_WORKSHEET_SYNC_LOG", "SYNC_LOG"),
+        google_worksheet_yearly_budget=_config_value("GOOGLE_WORKSHEET_YEARLY_BUDGET", "PROJECT_YEAR_BUDGET"),
         streamlit_server_port=int(_config_value("STREAMLIT_SERVER_PORT", "8501")),
         streamlit_server_headless=_env_bool("STREAMLIT_SERVER_HEADLESS", True),
         slack_bot_token=_config_value("SLACK_BOT_TOKEN"),
