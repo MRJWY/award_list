@@ -2,18 +2,36 @@
 from __future__ import annotations
 
 import html
-from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import pandas as pd
 import streamlit as st
 
-from core.yearly_budget import summarize_calendar_budget
+from core import settings
 
 
-def budget_indicators(proposals: pd.DataFrame, yearly: pd.DataFrame) -> list[dict[str, object]]:
+def load_annual_budget() -> dict[str, object]:
+    """Read the approved Excel total from private environment/Streamlit settings."""
+    settings._load_env_file(settings.ROOT_DIR / ".env")
+    raw_amount = settings._config_value("ANNUAL_BUDGET_2026_GOVERNMENT_KKRW")
+    raw_date = settings._config_value("ANNUAL_BUDGET_2026_AS_OF")
+    if not raw_amount or not raw_date:
+        return {}
+    try:
+        amount = Decimal(raw_amount)
+        as_of = date.fromisoformat(raw_date).isoformat()
+    except (InvalidOperation, ValueError):
+        return {}
+    if not amount.is_finite() or amount < 0:
+        return {}
+    return {"year": 2026, "government_funding_kkrw": amount, "as_of": as_of}
+
+
+def budget_indicators(proposals: pd.DataFrame, yearly: pd.DataFrame, annual_summary: dict[str, object] | None = None) -> list[dict[str, object]]:
     ids = set(proposals["proposal_id"].dropna().astype(str))
     visible = yearly.loc[yearly["proposal_id"].isin(ids) & yearly["project_year"].gt(0)].copy()
-    annual = summarize_calendar_budget(proposals, visible, 2026)
+    annual_summary = annual_summary or {}
 
     def coverage(rows: pd.DataFrame, column: str) -> str:
         entered = int(rows[column].notna().sum())
@@ -21,23 +39,22 @@ def budget_indicators(proposals: pd.DataFrame, yearly: pd.DataFrame) -> list[dic
             return "입력된 연차 없음"
         return f"{entered}/{len(rows)}개 연차 입력" + (" · 일부 입력" if entered < len(rows) else "")
 
-    annual_exclusions = annual["unknown_period_count"] + annual["cross_year_count"]
     missing_projects = len(ids - set(visible["proposal_id"]))
     total_note = f" · 연차 미등록 {missing_projects}건" if missing_projects else ""
-    annual_note = f" · 기간 미확인·연도 걸침 {annual_exclusions}개 제외" if annual_exclusions else ""
+    source_date = annual_summary.get("as_of", "")
     return [
         {"title": "우리 총 사업비", "value": visible["our_project_cost_kkrw"].sum(min_count=1),
          "caption": "전체 연차 · 정부지원금 + 현금 + 현물", "coverage": coverage(visible, "our_project_cost_kkrw") + total_note},
         {"title": "정부지원 사업비", "value": visible["our_government_funding_kkrw"].sum(min_count=1),
          "caption": "전체 연차 · 우리 회사 정부지원금", "coverage": coverage(visible, "our_government_funding_kkrw") + total_note},
-        {"title": "2026년 사업비", "value": annual["totals"]["our_project_cost_kkrw"],
-         "caption": "2026년 · 우리 회사 사업비", "coverage": coverage(annual["rows"], "our_project_cost_kkrw") + annual_note + total_note},
+        {"title": "2026년 사업비", "value": annual_summary.get("government_funding_kkrw", float("nan")),
+         "caption": "2026년 정부지원금", "coverage": f"Excel 총괄표 · 전체 과제 · {source_date} 기준" if source_date else "Excel 합계 설정 필요"},
     ]
 
 
 def render_budget_cards(proposals: pd.DataFrame, yearly: pd.DataFrame) -> None:
     cards = []
-    for index, item in enumerate(budget_indicators(proposals, yearly)):
+    for index, item in enumerate(budget_indicators(proposals, yearly, load_annual_budget())):
         if pd.isna(item["value"]):
             value = '<span class="budget-missing">미입력</span>'
         else:
@@ -49,4 +66,4 @@ def render_budget_cards(proposals: pd.DataFrame, yearly: pd.DataFrame) -> None:
             f'<p>{html.escape(item["caption"])}</p><div class="simple-budget-coverage">{html.escape(item["coverage"])}</div></article>'
         )
     st.markdown('<div class="simple-budget-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
-    st.caption("수주 과제 · 입력된 우리 회사 예산 기준. 2026년은 시작·종료일이 모두 2026년인 연차만 포함합니다.")
+    st.caption("앞의 두 카드는 검색된 수주 과제의 입력 예산 기준이며, 2026년 사업비는 Excel 전체 과제의 정부지원금 합계입니다.")

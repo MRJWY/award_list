@@ -2575,7 +2575,6 @@ def main() -> None:
 
     if filtered_df.empty:
         st.info("검색 조건에 맞는 수주 과제가 없습니다.")
-        return
 
     render_budget_cards(filtered_df, yearly_df)
 
