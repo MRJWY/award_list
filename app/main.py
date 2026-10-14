@@ -1223,7 +1223,7 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             <div class="hero-title-wrap">
                 <div class="hero-icon">{dashboard_icon_svg()}</div>
                 <div>
-                    <div class="eyebrow">3D IMMERSIVE · BUSINESS INTELLIGENCE</div>
+                    <div class="eyebrow">BUSINESS · PROJECT OVERVIEW</div>
                     <h1 class="hero-title">사업 제안 현황 대시보드</h1>
                     <p class="hero-subtitle">제안부터 수주까지, 사업의 흐름과 올해의 예산을 한눈에.</p>
                 </div>
@@ -2586,11 +2586,13 @@ def main() -> None:
     with st.expander("지표 집계 기준"):
         st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 상단 수주 총 사업비는 수주 과제의 전체 기간 금액이며, 2026년 사업비와 구분됩니다.")
 
-    render_calendar_budget(filtered_df, yearly_df, year=2026)
+    portfolio_df = render_calendar_budget(filtered_df, yearly_df, year=2026)
 
-    overview_tab, budget_tab, detail_tab = st.tabs(["공간형 대시보드", "연차별 사업비", "과제 목록 · 관리"])
+    overview_tab, budget_tab, detail_tab = st.tabs(["과제·부처 현황", "연차별 사업비", "과제 목록 · 관리"])
     with overview_tab:
-        render_portfolio(filtered_df)
+        render_portfolio(portfolio_df)
+        st.markdown("#### 전체 제안 분석")
+        st.caption("아래 상태·제품·책임자 현황은 상단 필터에 해당하는 전체 제안 기준입니다.")
         status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
         product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
         top_columns = st.columns(3, gap="small")
