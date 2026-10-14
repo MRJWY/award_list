@@ -24,7 +24,7 @@ from core.business_logic import (
     summarize_proposals,
 )
 from core.settings import load_settings
-from app.immersive import render_calendar_budget, render_portfolio
+from app.budget_dashboard import render_budget_cards
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
 from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, build_project_yearly_matrix, normalize_yearly_budget, validate_yearly_budget_amounts
 from integrations.google_sheets import (
@@ -1221,11 +1221,9 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             f"""
         <div class="hero-card">
             <div class="hero-title-wrap">
-                <div class="hero-icon">{dashboard_icon_svg()}</div>
                 <div>
-                    <div class="eyebrow">BUSINESS · PROJECT OVERVIEW</div>
                     <h1 class="hero-title">사업 제안 현황 대시보드</h1>
-                    <p class="hero-subtitle">제안부터 수주까지, 사업의 흐름과 올해의 예산을 한눈에.</p>
+                    <p class="hero-subtitle">우리 사업비를 한눈에.</p>
                 </div>
             </div>
             <div class="hero-meta">
@@ -2545,7 +2543,7 @@ def render_yearly_budget_summary(proposal_df: pd.DataFrame, yearly_df: pd.DataFr
 def main() -> None:
     st.set_page_config(page_title="사업 제안 현황 대시보드", layout="wide")
     inject_styles()
-    st.markdown(f"<style>{(ROOT_DIR / 'app' / 'immersive.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{(ROOT_DIR / 'app' / 'dashboard.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
     try:
         prefer_cache = bool(st.session_state.get("prefer_cached_dashboard_once", False))
@@ -2568,48 +2566,18 @@ def main() -> None:
         st.warning("아직 제안 데이터가 없습니다. Google Sheet에 데이터를 입력한 뒤 다시 확인해 주세요.")
         return
 
-    selected_products, selected_statuses, selected_ministries, keyword = render_filter_bar(proposal_df)
-    filtered_df = filter_proposals(
-        proposal_df,
-        products=selected_products,
-        statuses=selected_statuses,
-        ministries=selected_ministries,
-        keyword=keyword,
+    keyword = st.text_input(
+        "통합 검색", placeholder="사업명, 과제명, 제품, 부처, 기관, 담당자 검색",
+        label_visibility="collapsed", key="dashboard_search",
     )
+    awarded_df = proposal_df.loc[status_stage_masks(proposal_df)["awarded"]]
+    filtered_df = filter_proposals(awarded_df, keyword=keyword)
 
     if filtered_df.empty:
-        st.warning("현재 필터 조건에 맞는 데이터가 없습니다.")
+        st.info("검색 조건에 맞는 수주 과제가 없습니다.")
         return
 
-    summary = summarize_proposals(filtered_df)
-    render_metric_row(summary)
-    with st.expander("지표 집계 기준"):
-        st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 상단 수주 총 사업비는 수주 과제의 전체 기간 금액이며, 2026년 사업비와 구분됩니다.")
-
-    portfolio_df = render_calendar_budget(filtered_df, yearly_df, year=2026)
-
-    overview_tab, budget_tab, detail_tab = st.tabs(["과제·부처 현황", "연차별 사업비", "과제 목록 · 관리"])
-    with overview_tab:
-        render_portfolio(portfolio_df)
-        st.markdown("#### 전체 제안 분석")
-        st.caption("아래 상태·제품·책임자 현황은 상단 필터에 해당하는 전체 제안 기준입니다.")
-        status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
-        product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-        top_columns = st.columns(3, gap="small")
-        with top_columns[0]:
-            render_rank_panel("상태별 건수", status_summary, "status_name")
-        with top_columns[1]:
-            render_rank_panel("제품코드별 건수", product_summary, "product_code")
-        with top_columns[2]:
-            render_owner_summary_panel(filtered_df)
-
-    yearly_message = st.session_state.pop("yearly_budget_save_message", None)
-    if yearly_message:
-        st.success(yearly_message)
-    with budget_tab:
-        render_yearly_budget_summary(filtered_df, yearly_df)
-    with detail_tab:
-        render_detail_section(filtered_df, product_options, yearly_df)
+    render_budget_cards(filtered_df, yearly_df)
 
 if __name__ == "__main__":
     main()

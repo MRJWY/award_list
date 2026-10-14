@@ -1,0 +1,26 @@
+:root { --page-bg: #f8f9fc; --accent: #6557cf; --accent-hover: #5143b7; }
+.block-container { max-width: 1240px; padding-top: 3rem; }
+.hero-card { background: transparent; border: 0; box-shadow: none; padding: 0 0 24px; }
+.hero-title { font-size: clamp(24px, 3vw, 34px); letter-spacing: -.04em; }
+.hero-title-wrap { gap: 0; }
+.hero-subtitle { color: #758096; font-size: 14px; margin-top: 8px; }
+.hero-meta { font-size: 11px; color: #758096; }
+.source-badge { background: #eeecf8; color: #665a9d; font-size: 10px; }
+.stTextInput input { min-height: 50px; background: white; border: 1px solid #e1e4eb; border-radius: 12px; font-size: 14px; }
+.simple-budget-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 18px; margin-bottom: 12px; }
+.simple-budget-card { padding: 26px 24px; background: #fff; border: 1px solid #e1e4ed; border-radius: 16px; }
+.simple-budget-card h2 { margin: 0; padding: 0; font-size: 16px; font-weight: 600; color: #4d5870; }
+.simple-budget-value { margin: 22px 0 18px; color: #242c42; font-size: clamp(30px, 3.5vw, 44px); font-weight: 750; letter-spacing: -.05em; line-height: 1.2; }
+.simple-budget-value small { margin-left: 7px; font-size: 14px; font-weight: 500; letter-spacing: 0; color: #7a8397; }
+.simple-budget-card p { margin: 0 0 7px; color: #6a758c; font-size: 12px; }
+.simple-budget-coverage { font-size: 11px; color: #8590a4; line-height: 1.6; }
+.simple-budget-card.current-year { background: #f0eefb; border-color: #dbd5f4; }
+.current-year .simple-budget-value { color: #6557cf; }
+.budget-missing { font-size: 28px; }
+@media (max-width: 760px) {
+    .block-container { padding: 2rem 1rem; }
+    .hero-card { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .hero-meta { text-align: left; }
+    .simple-budget-grid { grid-template-columns: 1fr; gap: 12px; }
+    .simple-budget-card { padding: 22px; }
+}

@@ -230,8 +230,16 @@ def filter_proposals(
             + filtered["topic"].fillna("").astype(str)
             + " "
             + filtered["agency"].fillna("").astype(str)
+            + " "
+            + filtered["product_code"].fillna("").astype(str)
+            + " "
+            + filtered["status_name"].fillna("").astype(str)
+            + " "
+            + filtered["ministry"].fillna("").astype(str)
+            + " "
+            + filtered["owner"].fillna("").astype(str)
         ).str.lower()
-        filtered = filtered[searchable.str.contains(pattern, na=False)]
+        filtered = filtered[searchable.str.contains(pattern, na=False, regex=False)]
 
     return filtered.copy()
 
