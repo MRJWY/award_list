@@ -24,6 +24,7 @@ from core.business_logic import (
     summarize_proposals,
 )
 from core.settings import load_settings
+from app.immersive import render_calendar_budget, render_portfolio
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
 from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, build_project_yearly_matrix, normalize_yearly_budget, validate_yearly_budget_amounts
 from integrations.google_sheets import (
@@ -64,7 +65,7 @@ OWNER_STAGE_SPECS = [
     ("other_count", "기타", "owner-other"),
 ]
 
-TOP_SUMMARY_PANEL_HEIGHT = 420
+TOP_SUMMARY_PANEL_HEIGHT = 350
 
 EDITABLE_STATUS_OPTIONS = sort_status_values(
     [
@@ -1222,8 +1223,9 @@ def render_hero(latest_sync: object, data_source: str) -> None:
             <div class="hero-title-wrap">
                 <div class="hero-icon">{dashboard_icon_svg()}</div>
                 <div>
+                    <div class="eyebrow">3D IMMERSIVE · BUSINESS INTELLIGENCE</div>
                     <h1 class="hero-title">사업 제안 현황 대시보드</h1>
-                    <p class="hero-subtitle">Google Sheet 입력 데이터를 기준으로 제안 현황, 수주율, 마감 리스크를 한눈에 확인합니다.</p>
+                    <p class="hero-subtitle">제안부터 수주까지, 사업의 흐름과 올해의 예산을 한눈에.</p>
                 </div>
             </div>
             <div class="hero-meta">
@@ -1264,7 +1266,7 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         ("제출 후 단계 수", format_count(summary["submitted_count"]), "건", "제출 완료 포함 후속 단계 건수", "submitted", *METRIC_CARD_STYLE),
         ("수주 수", format_count(summary["awarded_count"]), "건", "수주 성공 건수", "awarded", *METRIC_CARD_STYLE),
         ("수주율", f"{summary['win_rate_pct']:.1f}", "%", "수주율 (수주/제출 후 단계)", "win_rate", *METRIC_CARD_STYLE),
-        ("총 사업비", total_project_cost_eok, "억원", f"정부지원금 합계 · {government_funding_eok}억원", "budget", *METRIC_CARD_STYLE),
+        ("수주 총 사업비", total_project_cost_eok, "억원", f"전체 기간 · 정부지원 {government_funding_eok}억", "budget", *METRIC_CARD_STYLE),
     ]
 
     columns = st.columns(len(cards))
@@ -1273,7 +1275,6 @@ def render_metric_row(summary: dict[str, int | float]) -> None:
         column.markdown(render_metric_card(title, value, unit, caption, icon, accent, tint), unsafe_allow_html=True)
 
 def render_filter_bar(proposal_df: pd.DataFrame) -> tuple[list[str], list[str], list[str], str]:
-    st.markdown("#### 필터", unsafe_allow_html=False)
     filter_columns = st.columns([1.05, 1.05, 1.05, 1.45, 0.45], vertical_alignment="bottom")
     product_options = sorted([value for value in proposal_df["product_code"].dropna().unique() if str(value).strip()])
     status_options = sort_status_values([value for value in proposal_df["status_name"].dropna().unique() if str(value).strip()])
@@ -2544,6 +2545,7 @@ def render_yearly_budget_summary(proposal_df: pd.DataFrame, yearly_df: pd.DataFr
 def main() -> None:
     st.set_page_config(page_title="사업 제안 현황 대시보드", layout="wide")
     inject_styles()
+    st.markdown(f"<style>{(ROOT_DIR / 'app' / 'immersive.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
     try:
         prefer_cache = bool(st.session_state.get("prefer_cached_dashboard_once", False))
@@ -2581,23 +2583,31 @@ def main() -> None:
 
     summary = summarize_proposals(filtered_df)
     render_metric_row(summary)
-    st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 금액 단위는 입력 기준상 천원이며 KPI 정부지원금은 억원으로 환산해 표시합니다.")
+    with st.expander("지표 집계 기준"):
+        st.caption("제출 완료 수는 상태가 제출 완료인 건수입니다. 제출 후 단계 수와 수주율은 제출 완료, 서면평가, 선정대기, 발표대기, 수주, 미수주 상태를 기준으로 계산합니다. 상단 수주 총 사업비는 수주 과제의 전체 기간 금액이며, 2026년 사업비와 구분됩니다.")
 
-    status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
-    product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
-    top_columns = st.columns(3, gap="small")
-    with top_columns[0]:
-        render_rank_panel("상태별 건수", status_summary, "status_name")
-    with top_columns[1]:
-        render_rank_panel("제품코드별 건수", product_summary, "product_code")
-    with top_columns[2]:
-        render_owner_summary_panel(filtered_df)
+    render_calendar_budget(filtered_df, yearly_df, year=2026)
+
+    overview_tab, budget_tab, detail_tab = st.tabs(["공간형 대시보드", "연차별 사업비", "과제 목록 · 관리"])
+    with overview_tab:
+        render_portfolio(filtered_df)
+        status_summary = aggregate_counts(filtered_df, "status_name", top_n=12, empty_label="미입력")
+        product_summary = aggregate_counts(filtered_df, "product_code", top_n=8, empty_label="미입력")
+        top_columns = st.columns(3, gap="small")
+        with top_columns[0]:
+            render_rank_panel("상태별 건수", status_summary, "status_name")
+        with top_columns[1]:
+            render_rank_panel("제품코드별 건수", product_summary, "product_code")
+        with top_columns[2]:
+            render_owner_summary_panel(filtered_df)
 
     yearly_message = st.session_state.pop("yearly_budget_save_message", None)
     if yearly_message:
         st.success(yearly_message)
-    render_yearly_budget_summary(filtered_df, yearly_df)
-    render_detail_section(filtered_df, product_options, yearly_df)
+    with budget_tab:
+        render_yearly_budget_summary(filtered_df, yearly_df)
+    with detail_tab:
+        render_detail_section(filtered_df, product_options, yearly_df)
 
 if __name__ == "__main__":
     main()
