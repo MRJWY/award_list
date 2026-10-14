@@ -6,6 +6,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
+from urllib.parse import urlencode
 
 import pandas as pd
 import streamlit as st
@@ -88,7 +89,7 @@ def year_table(yearly: pd.DataFrame, proposal_id: str) -> str:
     return '<div class="year-budget"><p>연차별 우리 예산 · 단위: 천원</p><table><thead><tr>' + ''.join(f'<th>{h}</th>' for h in headings) + '</tr></thead><tbody>' + ''.join(body) + '</tbody></table></div>'
 
 
-def project_row(row: pd.Series, yearly: pd.DataFrame, axis: tuple, today: date) -> str:
+def project_row(row: pd.Series, yearly: pd.DataFrame, axis: tuple, today: date, edit_context: dict | None = None) -> str:
     esc = lambda value, fallback="미입력": html.escape(normalize_text(value) or fallback)
     name = normalize_text(row.business_name) or normalize_text(row.project_name) or "과제명 미입력"
     name = re.sub(r"^20\d{2}(?:년도|년)?\s*", "", name).replace("\n", " ")
@@ -100,6 +101,9 @@ def project_row(row: pd.Series, yearly: pd.DataFrame, axis: tuple, today: date) 
     elif start is not None:
         phase = "기간 일부 확인"
     detail = business_card(row, yearly) + year_table(yearly, str(row.proposal_id))
+    if normalize_text(row.proposal_id):
+        url = "?" + urlencode({"edit_project": normalize_text(row.proposal_id), **(edit_context or {})})
+        detail = f'<div class="project-edit-action"><a href="{html.escape(url, quote=True)}" target="_self">수정</a></div>' + detail
     return (
         '<details class="project-row"><summary class="project-grid">'
         f'<div class="project-title"><strong>{html.escape(name)}</strong><small>{esc(row.project_name, "정식 과제명 미확인")}</small></div>'
@@ -138,5 +142,5 @@ def render_portfolio(proposals: pd.DataFrame, yearly: pd.DataFrame, keyword: str
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     axis = timeline_axis(proposals, yearly, today)
     header = f'<div class="project-grid project-header"><span>과제명</span><span>제품</span><span>담당자</span><span>등록 수행기간 <small>{axis[0].year} — {axis[1].year-1} · 세로선: 오늘</small></span><span>상태</span><span></span></div>'
-    rows = ''.join(project_row(row, yearly, axis, today) for _, row in visible.iterrows())
+    rows = ''.join(project_row(row, yearly, axis, today, {"q": keyword, "ministry": ministry}) for _, row in visible.iterrows())
     st.markdown('<div class="portfolio-board">' + header + rows + '</div>', unsafe_allow_html=True)

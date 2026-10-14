@@ -26,6 +26,7 @@ from core.business_logic import (
 from core.settings import load_settings
 from app.budget_dashboard import render_budget_cards
 from app.portfolio import render_portfolio
+from app.project_editor import render_requested_editor
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
 from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, build_project_yearly_matrix, normalize_yearly_budget, validate_yearly_budget_amounts
 from integrations.google_sheets import (
@@ -2546,6 +2547,8 @@ def main() -> None:
     inject_styles()
     st.markdown(f"<style>{(ROOT_DIR / 'app' / 'dashboard.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
+    if st.query_params.get("edit_project"):
+        st.cache_data.clear()
     try:
         prefer_cache = bool(st.session_state.get("prefer_cached_dashboard_once", False))
         st.session_state["prefer_cached_dashboard_once"] = False
@@ -2567,6 +2570,11 @@ def main() -> None:
         st.warning("아직 제안 데이터가 없습니다. Google Sheet에 데이터를 입력한 뒤 다시 확인해 주세요.")
         return
 
+    if st.query_params.get("edit_project") and "dashboard_search" not in st.session_state:
+        st.session_state["dashboard_search"] = st.query_params.get("q", "")
+        st.session_state["portfolio_ministry"] = st.query_params.get("ministry", "전체")
+    if message := st.session_state.pop("portfolio_save_message", None):
+        st.success(message)
     keyword = st.text_input(
         "통합 검색", placeholder="사업명, 과제명, 제품, 부처, 기관, 담당자 검색",
         label_visibility="collapsed", key="dashboard_search",
@@ -2574,6 +2582,7 @@ def main() -> None:
     awarded_df = proposal_df.loc[status_stage_masks(proposal_df)["awarded"]]
     render_budget_cards(awarded_df, yearly_df)
     render_portfolio(proposal_df, yearly_df, keyword)
+    render_requested_editor(proposal_df, yearly_df, product_options, data_source)
 
 if __name__ == "__main__":
     main()

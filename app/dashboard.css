@@ -60,6 +60,9 @@
 .project-expanded { border-top:1px solid #edf0f5; padding:20px; background:#fafbfe; }
 .project-expanded .business-result-card { border:0; padding:0; background:transparent; }
 .project-expanded .business-fields { margin-top:14px; padding-top:14px; }
+.project-edit-action { display:flex; justify-content:flex-end; margin-bottom:12px; }
+.project-edit-action a { display:inline-block; border:1px solid #d8d3ed; background:#fff; padding:7px 20px; border-radius:8px; color:#6557cf; text-decoration:none; font-size:13px; }
+.project-edit-action a:hover { background:#eeebf9; }
 .year-budget { overflow-x:auto; margin-top:20px; }
 .year-budget p { color:#8590a4; font-size:12px; margin-bottom:8px; }
 .year-budget table { width:100%; border-collapse:collapse; font-size:12px; white-space:nowrap; }

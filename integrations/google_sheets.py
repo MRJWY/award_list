@@ -186,6 +186,9 @@ def _serialize_update_value(column: str, value: object) -> str:
 
 
 def _normalize_sheet_value_for_compare(column: str, value: object) -> str:
+    if column in {"submission_deadline", "period_start", "period_end"}:
+        parsed = pd.to_datetime(value, errors="coerce")
+        return normalize_text(value) if pd.isna(parsed) else parsed.strftime("%Y-%m-%d")
     if column in {
         "total_project_cost_kkrw",
         "government_funding_kkrw",
@@ -523,10 +526,41 @@ def fetch_worksheet_records(settings: Settings, worksheet_name: str) -> list[dic
     return worksheet.get_all_records()
 
 
+def validate_edit_date(value: object) -> str:
+    text = normalize_text(value)
+    if not text:
+        return ""
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        raise ValueError("날짜는 YYYY-MM-DD 형식으로 입력해 주세요.")
+    datetime.strptime(text, "%Y-%m-%d")
+    return text
+
+
+def assert_row_unchanged(values: list, header_map: dict, expected: dict) -> None:
+    for column, before in expected.items():
+        index = header_map.get(column)
+        if index is None:
+            raise RuntimeError(f"저장할 열을 찾지 못했습니다: {column}")
+        current = values[index - 1] if index <= len(values) else ""
+        if _normalize_sheet_value_for_compare(column, current) != _normalize_sheet_value_for_compare(column, before):
+            raise RuntimeError("편집 중 다른 사용자가 시트를 변경했습니다. 닫은 뒤 다시 열어 최신 내용을 확인해 주세요.")
+
+
+def _literal_sheet_value(column: str, value: str) -> str | int | float:
+    """Write text literally and amounts as numbers, without evaluating formulas."""
+    numeric_columns = {*YEARLY_AMOUNT_COLUMNS, "government_funding_kkrw", "private_cash_kkrw", "private_in_kind_kkrw", "project_year"}
+    if column in numeric_columns and value != "":
+        number = float(value)
+        return int(number) if number.is_integer() else number
+    return value
+
+
 def update_proposal_master_record(
     settings: Settings,
     proposal_id: str,
     updates: dict[str, object],
+    *,
+    expected: dict[str, object] | None = None,
 ) -> dict[str, str]:
     normalized_proposal_id = normalize_text(proposal_id)
     if not normalized_proposal_id:
@@ -535,6 +569,7 @@ def update_proposal_master_record(
         raise RuntimeError("Google Sheet is not configured.")
 
     allowed_columns = {
+        "business_name", "project_name", "product_code", "agency", "partner", "topic", "submission_deadline",
         "status_code",
         "status_name",
         "awarded_yn",
@@ -550,6 +585,8 @@ def update_proposal_master_record(
     sanitized_updates = {column: value for column, value in updates.items() if column in allowed_columns}
     if not sanitized_updates:
         raise ValueError("No editable fields were provided.")
+    if "submission_deadline" in sanitized_updates:
+        sanitized_updates["submission_deadline"] = validate_edit_date(sanitized_updates["submission_deadline"])
 
     if "status_name" in sanitized_updates and "status_code" not in sanitized_updates:
         status_code = _status_name_to_code_map(settings).get(normalize_text(sanitized_updates["status_name"]), "")
@@ -570,13 +607,14 @@ def update_proposal_master_record(
         raise RuntimeError("`proposal_id` column was not found in PROPOSAL_MASTER.")
 
     proposal_ids = worksheet.col_values(proposal_id_col)
-    target_row_index: int | None = None
-    for row_index, cell_value in enumerate(proposal_ids[1:], start=2):
-        if normalize_text(cell_value) == normalized_proposal_id:
-            target_row_index = row_index
-            break
-    if target_row_index is None:
+    matches = [i for i, value in enumerate(proposal_ids[1:], start=2) if normalize_text(value) == normalized_proposal_id]
+    if not matches:
         raise KeyError(f"Proposal not found: {normalized_proposal_id}")
+    if len(matches) > 1:
+        raise RuntimeError("같은 제안ID가 중복되어 있어 저장할 수 없습니다.")
+    target_row_index = matches[0]
+    if expected is not None:
+        assert_row_unchanged(worksheet.row_values(target_row_index), header_map, expected)
 
     try:
         import gspread
@@ -590,13 +628,13 @@ def update_proposal_master_record(
         if column_index is None:
             continue
         serialized_value = _serialize_update_value(column, raw_value)
-        cells.append(gspread.Cell(target_row_index, column_index, serialized_value))
+        cells.append(gspread.Cell(target_row_index, column_index, _literal_sheet_value(column, serialized_value)))
         applied_updates[column] = serialized_value
 
     if not cells:
         raise RuntimeError("Editable columns were not found in PROPOSAL_MASTER.")
 
-    worksheet.update_cells(cells, value_input_option="USER_ENTERED")
+    worksheet.update_cells(cells, value_input_option="RAW")
     verify_proposal_master_row_updates(
         worksheet=worksheet,
         target_row_index=target_row_index,
@@ -688,6 +726,10 @@ def upsert_yearly_budget_record(
     project_year: int,
     amounts: dict[str, object],
     notes: str = "",
+    *,
+    period_start: str | None = None,
+    period_end: str | None = None,
+    expected: dict[str, object] | None = None,
 ) -> None:
     if not is_google_sheet_configured(settings):
         raise RuntimeError("Google Sheet is not configured.")
@@ -732,7 +774,14 @@ def upsert_yearly_budget_record(
         "notes": normalize_text(notes),
         "last_updated_at": _current_timestamp_string(settings),
     }
-    values = [record.get(column, "") for column in canonical_headers]
+    for column, value in (("period_start", period_start), ("period_end", period_end)):
+        if value is not None:
+            if column not in canonical_headers:
+                raise RuntimeError(f"연차별 사업비 시트에 필요한 열이 없습니다: {column}")
+            record[column] = validate_edit_date(value)
+    if record.get("period_start") and record.get("period_end") and record["period_start"] > record["period_end"]:
+        raise ValueError("종료일은 시작일보다 빠를 수 없습니다.")
+    values = [_literal_sheet_value(column, record.get(column, "")) for column in canonical_headers]
     existing_rows = worksheet.get_all_values()
     id_index = canonical_headers.index("proposal_id")
     year_index = canonical_headers.index("project_year")
@@ -745,16 +794,21 @@ def upsert_yearly_budget_record(
     ]
     if len(matches) > 1:
         raise RuntimeError(f"{proposal_id} {project_year}차년도 행이 중복되어 있습니다.")
+    if expected is not None:
+        if bool(matches) != bool(expected):
+            raise RuntimeError("편집 중 시트의 연차 정보가 변경되었습니다. 닫은 뒤 다시 열어 주세요.")
+        if matches:
+            assert_row_unchanged(existing_rows[matches[0] - 1], {column: i for i, column in enumerate(canonical_headers, 1)}, expected)
     if matches:
         row_number = matches[0]
         cells = [
-            gspread.Cell(row_number, canonical_headers.index(column) + 1, value)
+            gspread.Cell(row_number, canonical_headers.index(column) + 1, _literal_sheet_value(column, value))
             for column, value in record.items()
         ]
-        worksheet.update_cells(cells, value_input_option="USER_ENTERED")
+        worksheet.update_cells(cells, value_input_option="RAW")
     else:
         _prepare_worksheet_for_append(worksheet, values)
-        worksheet.append_row(values, value_input_option="USER_ENTERED")
+        worksheet.append_row(values, value_input_option="RAW")
         row_number = len(worksheet.col_values(id_index + 1))
     verify_proposal_master_row_updates(
         worksheet,

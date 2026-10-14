@@ -124,9 +124,25 @@ def test_yearly_budget_save_updates_same_proposal_and_year(monkeypatch) -> None:
     }
     google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts)
     assert len(yearly.rows) == 2
-    assert yearly.rows[1][:8] == ["PROP-001", "1", "", "", "1000", "300", "100", "50"]
+    assert yearly.rows[1][:8] == ["PROP-001", 1, "", "", 1000, 300, 100, 50]
 
     amounts["our_government_funding_kkrw"] = 350
     google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts)
     assert len(yearly.rows) == 2
-    assert yearly.rows[1][5] == "350"
+    assert yearly.rows[1][5] == 350
+
+    google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts,
+        period_start="2026-01-01", period_end="2026-12-31", expected={"our_government_funding_kkrw": 350})
+    assert yearly.rows[1][2:4] == ["2026-01-01", "2026-12-31"]
+    with pytest.raises(RuntimeError, match="다른 사용자"):
+        google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts,
+            expected={"our_government_funding_kkrw": 300})
+    with pytest.raises(RuntimeError, match="변경"):
+        google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts, expected={})
+    with pytest.raises(ValueError, match="종료일"):
+        google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts,
+            period_start="2027-01-01", period_end="2026-12-31")
+    # Old callers that only edit money must preserve dates.
+    google_sheets.upsert_yearly_budget_record(Settings(), "PROP-001", 1, amounts, notes="=literal text")
+    assert yearly.rows[1][2:4] == ["2026-01-01", "2026-12-31"]
+    assert yearly.rows[1][8] == "=literal text"
