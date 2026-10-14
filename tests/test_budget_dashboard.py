@@ -6,6 +6,7 @@ from streamlit.testing.v1 import AppTest
 import app.main as dashboard
 import app.budget_dashboard as budget_dashboard
 from app.budget_dashboard import budget_indicators
+from app.search_results import business_card, registered_period
 from core.business_logic import add_deadline_health_columns, filter_proposals
 from core.transforms import normalize_proposal_master
 from core.yearly_budget import normalize_yearly_budget
@@ -13,7 +14,7 @@ from core.yearly_budget import normalize_yearly_budget
 
 def data():
     proposals = add_deadline_health_columns(normalize_proposal_master(pd.DataFrame([
-        {"proposal_id": "A", "project_name": "Alpha [R&D]", "product_code": "LOOKOUT", "ministry": "국토부", "owner": "김담당", "status_name": "수주", "total_project_cost_kkrw": 99999999},
+        {"proposal_id": "A", "business_name": "실증 지원사업", "project_name": "Alpha [R&D]", "product_code": "LOOKOUT", "ministry": "국토부", "agency": "지원기관", "owner": "김담당", "status_name": "수주", "total_project_cost_kkrw": 99999999},
         {"proposal_id": "B", "project_name": "Beta", "product_code": "TITAN", "ministry": "산업부", "status_name": "제출 완료"},
     ])))
     yearly = normalize_yearly_budget(pd.DataFrame([
@@ -34,6 +35,8 @@ def test_only_three_company_budget_cards_and_one_search(monkeypatch):
     assert not app.tabs and not app.radio and not app.multiselect and not app.selectbox
     assert not app.expander and not app.button and not app.dataframe
     cards = lambda: next(m.value for m in app.markdown if 'class="simple-budget-grid"' in m.value)
+    results = lambda: [m.value for m in app.markdown if 'class="business-results"' in m.value]
+    assert not results()
     assert cards().count('<article') == 3
     assert "1.80<small>억원" in cards()
     assert "1.50<small>억원" in cards()
@@ -41,13 +44,25 @@ def test_only_three_company_budget_cards_and_one_search(monkeypatch):
     assert "2026년 정부지원금" in cards() and "Excel 총괄표 · 전체 과제" in cards()
     app.text_input[0].set_value("국토부").run()
     assert not app.exception and "1.80<small>억원" in cards()
+    assert len(results()) == 1
+    assert "Alpha [R&amp;D]" in results()[0] and "Beta" not in results()[0]
+    for value in ["실증 지원사업", "지원기관", "김담당", "LOOKOUT", "2026.01.01 ~ 2027.12.31"]:
+        assert value in results()[0]
     app.text_input[0].set_value("[").run()
     assert not app.exception and "2.30<small>억원" in cards()
     app.text_input[0].set_value("Beta").run()
-    assert not app.exception and any("수주 과제가 없습니다" in item.value for item in app.info)
+    assert not app.exception and not app.info
+    assert "Beta" in results()[0] and "제출 완료" in results()[0]
     assert "2.30<small>억원" in cards() and cards().count('budget-missing') == 2
+    app.text_input[0].set_value("a").run()
+    assert results()[0].count('<article') == 2
+    app.text_input[0].set_value("no matching project").run()
+    assert not results() and any("일치하는 사업이 없습니다" in item.value for item in app.info)
     app.text_input[0].set_value("").run()
     assert not app.exception and cards().count('<article') == 3
+    assert not results()
+    app.text_input[0].set_value("   ").run()
+    assert not results()
 
 
 @pytest.mark.parametrize("keyword", ["LOOKOUT", "국토부", "김담당", "[R&D]", "Alpha"])
@@ -107,3 +122,16 @@ def test_missing_or_invalid_private_settings_do_not_fabricate_budget(monkeypatch
         "ANNUAL_BUDGET_2026_AS_OF": as_of,
     }[name])
     assert budget_dashboard.load_annual_budget() == {}
+
+
+def test_business_details_escape_sheet_text_and_do_not_invent_dates():
+    proposals, yearly = data()
+    row = proposals.iloc[0].copy()
+    row["project_name"] = '<script>alert("test")</script>'
+    row["agency"] = pd.NA
+    yearly.loc[1, "period_end"] = "2026-01-01"  # Before this row's start.
+    rendered = business_card(row, yearly)
+    assert "<script>" not in rendered and "&lt;script&gt;" in rendered
+    assert "<NA>" not in rendered and "미입력" in rendered
+    assert registered_period(yearly, "A") == "2026.01.01 ~ 2026.12.31 · 일부 연차 미확인"
+    assert registered_period(yearly, "unknown") == "미입력"

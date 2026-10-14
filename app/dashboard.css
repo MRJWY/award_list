@@ -17,10 +17,23 @@
 .simple-budget-card.current-year { background: #f0eefb; border-color: #dbd5f4; }
 .current-year .simple-budget-value { color: #6557cf; }
 .budget-missing { font-size: 28px; }
+.business-results { display: grid; gap: 14px; margin-top: 8px; }
+.business-result-card { background: #fff; border: 1px solid #e1e4ed; border-radius: 16px; padding: 22px 24px; }
+.business-result-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.business-result-card .business-program { margin: 0 0 8px; color: #758096; font-size: 13px; overflow-wrap: anywhere; }
+.business-status { flex-shrink: 0; border-radius: 7px; padding: 4px 10px; background: #f0eefb; color: #6557cf; font-size: 12px; }
+.business-result-card h3 { margin: 0; padding: 0; font-size: 19px; line-height: 1.5; color: #242c42; overflow-wrap: anywhere; }
+.business-result-card .business-topic { color: #6a758c; font-size: 13px; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.business-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; margin: 20px 0 0; padding-top: 18px; border-top: 1px solid #eef0f5; }
+.business-fields dt { color: #8590a4; font-size: 12px; margin-bottom: 4px; font-weight: 400; }
+.business-fields dd { color: #3c4961; font-size: 14px; margin: 0; overflow-wrap: anywhere; }
+.business-id { margin-top: 16px; color: #939cad; font-size: 11px; }
 @media (max-width: 760px) {
     .block-container { padding: 2rem 1rem; }
     .hero-card { flex-direction: column; align-items: flex-start; gap: 10px; }
     .hero-meta { text-align: left; }
     .simple-budget-grid { grid-template-columns: 1fr; gap: 12px; }
     .simple-budget-card { padding: 22px; }
+    .business-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .business-result-card { padding: 20px; }
 }
