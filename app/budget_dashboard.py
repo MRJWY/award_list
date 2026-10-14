@@ -34,10 +34,10 @@ def budget_indicators(proposals: pd.DataFrame, yearly: pd.DataFrame, annual_summ
     annual_summary = annual_summary or {}
 
     def coverage(rows: pd.DataFrame, column: str) -> str:
-        entered = int(rows[column].notna().sum())
+        entered = int(rows.groupby("proposal_id")[column].apply(lambda values: values.notna().all()).sum())
         if not len(rows):
-            return "입력된 연차 없음"
-        return f"{entered}/{len(rows)}개 연차 입력" + (" · 일부 입력" if entered < len(rows) else "")
+            return "입력된 예산 없음"
+        return f"예산 확인 {entered}/{len(ids)}개 과제" + (" · 일부 미입력" if entered < len(ids) else "")
 
     missing_projects = len(ids - set(visible["proposal_id"]))
     total_note = f" · 연차 미등록 {missing_projects}건" if missing_projects else ""
@@ -66,4 +66,4 @@ def render_budget_cards(proposals: pd.DataFrame, yearly: pd.DataFrame) -> None:
             f'<p>{html.escape(item["caption"])}</p><div class="simple-budget-coverage">{html.escape(item["coverage"])}</div></article>'
         )
     st.markdown('<div class="simple-budget-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
-    st.caption("앞의 두 카드는 검색된 수주 과제의 입력 예산 기준이며, 2026년 사업비는 Excel 전체 과제의 정부지원금 합계입니다.")
+    st.caption("상단은 전체 예산으로 검색·부처 선택에 따라 변하지 않습니다. 앞의 두 금액은 수주 과제의 입력 예산, 2026년은 Excel 총괄표의 정부지원금 기준입니다.")

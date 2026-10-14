@@ -1,12 +1,14 @@
 import pandas as pd
 import pytest
 from decimal import Decimal
+from datetime import date
 from streamlit.testing.v1 import AppTest
 
 import app.main as dashboard
 import app.budget_dashboard as budget_dashboard
 from app.budget_dashboard import budget_indicators
 from app.search_results import business_card, registered_period
+from app.portfolio import ministry_summary, visible_projects, project_period, timeline_axis, timeline_html, project_row
 from core.business_logic import add_deadline_health_columns, filter_proposals
 from core.transforms import normalize_proposal_master
 from core.yearly_budget import normalize_yearly_budget
@@ -25,44 +27,55 @@ def data():
     return proposals, yearly
 
 
-def test_only_three_company_budget_cards_and_one_search(monkeypatch):
+def test_fixed_budget_cards_and_filterable_project_board(monkeypatch):
     proposals, yearly = data()
     monkeypatch.setattr(dashboard, "load_dashboard_data", lambda *args: (proposals, yearly, None, "google_sheet", "", {}, []))
     monkeypatch.setattr(budget_dashboard, "load_annual_budget", lambda: {"year": 2026, "government_funding_kkrw": 230000, "as_of": "2026-10-13"})
-    app = AppTest.from_file("streamlit_app.py", default_timeout=20).run()
+    # Streamlit 1.51's test runner cannot serialize pills on a second run.
+    # Exercise each initial state here; real reruns are verified in the browser.
+    def run_state(keyword="", ministry="전체"):
+        instance = AppTest.from_file("streamlit_app.py", default_timeout=20)
+        instance.session_state["dashboard_search"] = keyword
+        instance.session_state["portfolio_ministry"] = ministry
+        return instance.run()
+    app = run_state()
     assert not app.exception
     assert len(app.text_input) == 1
     assert not app.tabs and not app.radio and not app.multiselect and not app.selectbox
     assert not app.expander and not app.button and not app.dataframe
     cards = lambda: next(m.value for m in app.markdown if 'class="simple-budget-grid"' in m.value)
-    results = lambda: [m.value for m in app.markdown if 'class="business-results"' in m.value]
-    assert not results()
+    results = lambda: [m.value for m in app.markdown if 'class="portfolio-board"' in m.value]
+    assert len(results()) == 1 and results()[0].count('<details') == 1
+    assert '<summary' in results()[0] and '<table' in results()[0]
     assert cards().count('<article') == 3
     assert "1.80<small>억원" in cards()
     assert "1.50<small>억원" in cards()
     assert "2.30<small>억원" in cards()
     assert "2026년 정부지원금" in cards() and "Excel 총괄표 · 전체 과제" in cards()
-    app.text_input[0].set_value("국토부").run()
-    assert not app.exception and "1.80<small>억원" in cards()
+    original_cards = cards()
+    app = run_state("국토부")
+    assert not app.exception and cards() == original_cards
     assert len(results()) == 1
     assert "Alpha [R&amp;D]" in results()[0] and "Beta" not in results()[0]
     for value in ["실증 지원사업", "지원기관", "김담당", "LOOKOUT", "2026.01.01 ~ 2027.12.31"]:
         assert value in results()[0]
-    app.text_input[0].set_value("[").run()
+    app = run_state("[")
     assert not app.exception and "2.30<small>억원" in cards()
-    app.text_input[0].set_value("Beta").run()
+    app = run_state("Beta")
     assert not app.exception and not app.info
     assert "Beta" in results()[0] and "제출 완료" in results()[0]
-    assert "2.30<small>억원" in cards() and cards().count('budget-missing') == 2
-    app.text_input[0].set_value("a").run()
-    assert results()[0].count('<article') == 2
-    app.text_input[0].set_value("no matching project").run()
-    assert not results() and any("일치하는 사업이 없습니다" in item.value for item in app.info)
-    app.text_input[0].set_value("").run()
+    assert cards() == original_cards
+    app = run_state("Beta", "국토부")
+    assert not results() and cards() == original_cards
+    app = run_state("a")
+    assert results()[0].count('<details') == 2
+    app = run_state("no matching project")
+    assert not results() and any("조건에 맞는 과제가 없습니다" in item.value for item in app.info)
+    app = run_state()
     assert not app.exception and cards().count('<article') == 3
-    assert not results()
-    app.text_input[0].set_value("   ").run()
-    assert not results()
+    assert results()[0].count('<details') == 1 and cards() == original_cards
+    app = run_state("   ")
+    assert results()[0].count('<details') == 1
 
 
 @pytest.mark.parametrize("keyword", ["LOOKOUT", "국토부", "김담당", "[R&D]", "Alpha"])
@@ -135,3 +148,29 @@ def test_business_details_escape_sheet_text_and_do_not_invent_dates():
     assert "<NA>" not in rendered and "미입력" in rendered
     assert registered_period(yearly, "A") == "2026.01.01 ~ 2026.12.31 · 일부 연차 미확인"
     assert registered_period(yearly, "unknown") == "미입력"
+
+
+def test_ministry_distribution_sums_each_project_once_and_preserves_unknowns():
+    proposals, yearly = data()
+    proposals.loc[0, "ministry"] = "중소기업벤처부"
+    proposals.loc[1, "ministry"] = ""
+    groups = {r["name"]: r for r in ministry_summary(proposals, yearly)}
+    assert groups["중소벤처기업부"]["count"] == 1
+    assert groups["중소벤처기업부"]["funding"] == 150000
+    assert groups["부처 미확인"]["count"] == 1
+    assert visible_projects(proposals, "", "전체").proposal_id.tolist() == ["A"]
+    assert visible_projects(proposals, "Beta", "부처 미확인").proposal_id.tolist() == ["B"]
+
+
+def test_common_timeline_and_partial_period_dont_imply_completion():
+    proposals, yearly = data()
+    today = date(2026, 10, 14)
+    axis = timeline_axis(proposals, yearly, today)
+    assert axis == (pd.Timestamp("2026-01-01"), pd.Timestamp("2028-01-01"))
+    rendered = timeline_html(project_period(yearly, "A"), axis, today)
+    assert 'today-line' in rendered and '2026.01 – 2027.12' in rendered
+    yearly.loc[1, "period_end"] = ""
+    assert not project_period(yearly, "A")[2]
+    rendered = project_row(proposals.iloc[0], yearly, axis, today)
+    assert "기간 일부 확인" in rendered and "기간 종료" not in rendered
+    assert "기간 미확인" in timeline_html(project_period(yearly, "unknown"), axis, today)

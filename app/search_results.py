@@ -34,7 +34,7 @@ def business_card(row: pd.Series, yearly: pd.DataFrame) -> str:
         ("등록 연차 기간", html.escape(period)), ("협력기관", text("partner")),
     ]
     details = ''.join(f'<div><dt>{label}</dt><dd>{value}</dd></div>' for label, value in fields)
-    topic = f'<p class="business-topic">{text("topic")}</p>' if normalize_text(row.get("topic")) else ""
+    topic = f'<p class="business-topic">{text("topic")}</p>' if normalize_text(row.get("topic")) and text("topic") != title else ""
     return (
         '<article class="business-result-card">'
         f'<div class="business-result-top"><p class="business-program">{text("business_name", "사업명 미입력")}</p>'

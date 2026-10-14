@@ -25,7 +25,7 @@ from core.business_logic import (
 )
 from core.settings import load_settings
 from app.budget_dashboard import render_budget_cards
-from app.search_results import render_search_results
+from app.portfolio import render_portfolio
 from core.transforms import PROPOSAL_MASTER_COLUMN_LABELS, normalize_proposal_master
 from core.yearly_budget import AMOUNT_COLUMNS as YEARLY_AMOUNT_COLUMNS, build_project_yearly_matrix, normalize_yearly_budget, validate_yearly_budget_amounts
 from integrations.google_sheets import (
@@ -2572,11 +2572,8 @@ def main() -> None:
         label_visibility="collapsed", key="dashboard_search",
     )
     awarded_df = proposal_df.loc[status_stage_masks(proposal_df)["awarded"]]
-    filtered_df = filter_proposals(awarded_df, keyword=keyword)
-
-    render_budget_cards(filtered_df, yearly_df)
-    if keyword.strip():
-        render_search_results(filter_proposals(proposal_df, keyword=keyword), yearly_df, keyword)
+    render_budget_cards(awarded_df, yearly_df)
+    render_portfolio(proposal_df, yearly_df, keyword)
 
 if __name__ == "__main__":
     main()
