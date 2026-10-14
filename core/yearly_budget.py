@@ -53,6 +53,29 @@ def normalize_yearly_budget(frame: pd.DataFrame) -> pd.DataFrame:
     return normalized
 
 
+def summarize_calendar_budget(proposals: pd.DataFrame, yearly: pd.DataFrame, year: int) -> dict[str, object]:
+    """Sum only periods wholly within the calendar year; never prorate unknown budgets."""
+    ids = set(proposals["proposal_id"].dropna().astype(str))
+    visible = yearly.loc[yearly["proposal_id"].isin(ids)].copy()
+    starts = pd.to_datetime(visible["period_start"], errors="coerce")
+    ends = pd.to_datetime(visible["period_end"], errors="coerce")
+    valid = starts.notna() & ends.notna() & starts.le(ends)
+    included = valid & starts.dt.year.eq(year) & ends.dt.year.eq(year)
+    overlaps = valid & starts.dt.year.le(year) & ends.dt.year.ge(year) & ~included
+    rows = visible.loc[included].copy()
+    columns = [*AMOUNT_COLUMNS, "our_project_cost_kkrw"]
+    return {
+        "rows": rows,
+        "totals": rows[columns].sum(min_count=1),
+        "entered": rows[columns].notna().sum(),
+        "period_count": len(rows),
+        "project_count": rows["proposal_id"].nunique(),
+        "unknown_period_count": int((~valid).sum()),
+        "cross_year_count": int(overlaps.sum()),
+        "without_period_count": len(ids - set(visible["proposal_id"])),
+    }
+
+
 def validate_yearly_budget_amounts(amounts: dict[str, object]) -> dict[str, int | None]:
     validated: dict[str, int | None] = {}
     for column in AMOUNT_COLUMNS:
