@@ -1,6 +1,6 @@
 :root { --text: #1f2328; --text-sub: #59636e; --text-muted: #818b98; --line: #d8dee4; --line-soft: #eaeef2; --bg-soft: #f6f8fa; --accent: #1f3a5f; }
 .stApp { background: #fff; color: var(--text); font-family: "Pretendard Variable", Pretendard, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
-.block-container { max-width: 1240px; padding-top: 1.5rem; }
+.block-container { max-width: 1240px; padding-top: 4rem; }
 .hero-card { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 0 0 12px; margin-bottom: 6px; border-bottom: 2px solid var(--text); }
 .hero-card .hero-title { margin: 0; padding: 0; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: normal; }
 .hero-meta { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -71,7 +71,7 @@
 .year-budget th:nth-child(n+4), .year-budget td:nth-child(n+4) { text-align: right; }
 .year-empty { margin: 16px 0 0; color: var(--text-muted); font-size: 12px; }
 @media (max-width: 760px) {
-    .block-container { padding: 1.5rem 1rem; }
+    .block-container { padding: 4rem 1rem 1.5rem; }
     .hero-card { flex-direction: column; align-items: flex-start; gap: 4px; }
     .simple-budget-grid { grid-template-columns: 1fr; }
     .simple-budget-card { border-left: 0; border-top: 1px solid var(--line); }
