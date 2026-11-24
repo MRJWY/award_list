@@ -4,7 +4,7 @@ runOnSave = false
 
 [theme]
 base = "light"
-primaryColor = "#2F80ED"
-backgroundColor = "#F6F8FC"
-secondaryBackgroundColor = "#FFFFFF"
-textColor = "#1F2A44"
+primaryColor = "#1F3A5F"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F6F8FA"
+textColor = "#1F2328"

@@ -117,10 +117,10 @@ def project_row(row: pd.Series, yearly: pd.DataFrame, axis: tuple, today: date, 
 def render_portfolio(proposals: pd.DataFrame, yearly: pd.DataFrame, keyword: str) -> None:
     awarded = proposals.loc[status_stage_masks(proposals)["awarded"]]
     groups = ministry_summary(awarded, yearly)
-    st.markdown('<div class="portfolio-heading"><h2>과제 현황</h2><span>수주 과제의 부처별 분포 · 정부지원금 기준</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="portfolio-heading"><h2>과제 현황</h2><span>정부지원금 기준</span></div>', unsafe_allow_html=True)
     labels = {"전체": f"전체 · {len(awarded)}건"}
     short = {"중소벤처기업부": "중기부", "과학기술정보통신부": "과기정통부", "산업통상자원부": "산업부", "서울특별시": "서울시", "국토교통부": "국토부"}
-    colors = ["#7866d8", "#559ba3", "#7997c4", "#bd9e69", "#a5acbb", "#897daa"]
+    colors = ["#1f3a5f", "#4a6788", "#7d93ad", "#a9b7c8", "#c9d1db", "#e1e6ec"]
     segments = []
     for i, group in enumerate(groups):
         label = f'{short.get(group["name"], group["name"])} · {group["count"]}건 · {money(group["funding"])}'
@@ -135,9 +135,9 @@ def render_portfolio(proposals: pd.DataFrame, yearly: pd.DataFrame, keyword: str
         st.session_state["portfolio_ministry"] = "전체"
     ministry = st.pills("부처 선택", options, format_func=labels.get, key="portfolio_ministry", label_visibility="collapsed") or "전체"
     visible = visible_projects(proposals, keyword, ministry)
-    st.caption(f'{"검색 결과" if keyword.strip() else "수주 과제"} {len(visible)}건 · 행을 누르면 상세정보와 연차별 예산이 펼쳐집니다. 검색은 전체 등록 사업에서 찾습니다.')
+    st.caption(f'{"검색 결과" if keyword.strip() else "수주 과제"} {len(visible)}건')
     if visible.empty:
-        st.info("조건에 맞는 과제가 없습니다. 검색어 또는 부처 선택을 바꿔 보세요.")
+        st.info("조건에 맞는 과제가 없습니다.")
         return
     today = datetime.now(ZoneInfo("Asia/Seoul")).date()
     axis = timeline_axis(proposals, yearly, today)

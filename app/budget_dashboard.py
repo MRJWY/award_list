@@ -66,4 +66,4 @@ def render_budget_cards(proposals: pd.DataFrame, yearly: pd.DataFrame) -> None:
             f'<p>{html.escape(item["caption"])}</p><div class="simple-budget-coverage">{html.escape(item["coverage"])}</div></article>'
         )
     st.markdown('<div class="simple-budget-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
-    st.caption("상단은 전체 예산으로 검색·부처 선택에 따라 변하지 않습니다. 앞의 두 금액은 수주 과제의 입력 예산, 2026년은 Excel 총괄표의 정부지원금 기준입니다.")
+    st.caption("검색·부처 선택과 관계없는 전체 수주 과제 기준")
